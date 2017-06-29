@@ -1,9 +1,6 @@
 # OSM_QSAR ignored directories.
-/DNN
 /Notebooks
 /Work
-/Code\ Offcuts
-/chEMBL
 /Related\ Papers\ Info
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -55,6 +52,10 @@ coverage.xml
 # Translations
 *.mo
 *.pot
+
+
+# Pycharm stuff:
+/.idea
 
 # Django stuff:
 *.log
