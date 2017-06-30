@@ -59,9 +59,7 @@
 
 from __future__ import print_function
 
-from BCBio.GFF.GFFParser import GFFExaminer
-
-from OSMConfig import verbose
+from BCBio.GFF.GFFParser import GFFExaminer, parse
 
 import pprint
 
@@ -69,10 +67,47 @@ from math import pi, sqrt, exp, log
 import sys
 import re
 import os
-import argparse
-import logging
 
+#############
+# variables #
+#############
 
+minimum_variant_proportion = 0.9
+minimum_variant_counts = 20
+maximum_wildtype_proportion = 0.1
+maximum_wildtype_variant_counts = 20
+minimum_wildtype_total_counts = 10
+desired_gene_type_in_GFF = 'cds'
+GFF_description_line = 'gene'
+description_key = 'description'
+GTF = False
+trust_nonmatching_alignment = True
+position_read_report = False
+verbose = False
+debug = False
+missense_only = True
+writer = False
+# cnv_p_threshold = 0.001
+# cnv_ratio_threshold = 1.5
+cnv = False
+cnv_writer = False
+window_increment = 3000
+window_size = 3000
+cnv_report_frequency = 3000
+tile_position_mean = True
+# softclips = True
+
+gencode = {'ATA': 'I', 'ATC': 'I', 'ATT': 'I', 'ATG': 'M', 'ACA': 'T',
+           'ACC': 'T', 'ACG': 'T', 'ACT': 'T', 'AAC': 'N', 'AAT': 'N', 'AAA': 'K',
+           'AAG': 'K', 'AGC': 'S', 'AGT': 'S', 'AGA': 'R', 'AGG': 'R', 'CTA': 'L',
+           'CTC': 'L', 'CTG': 'L', 'CTT': 'L', 'CCA': 'P', 'CCC': 'P', 'CCG': 'P',
+           'CCT': 'P', 'CAC': 'H', 'CAT': 'H', 'CAA': 'Q', 'CAG': 'Q', 'CGA': 'R',
+           'CGC': 'R', 'CGG': 'R', 'CGT': 'R', 'GTA': 'V', 'GTC': 'V', 'GTG': 'V',
+           'GTT': 'V', 'GCA': 'A', 'GCC': 'A', 'GCG': 'A', 'GCT': 'A', 'GAC': 'D',
+           'GAT': 'D', 'GAA': 'E', 'GAG': 'E', 'GGA': 'G', 'GGC': 'G', 'GGG': 'G',
+           'GGT': 'G', 'TCA': 'S', 'TCC': 'S', 'TCG': 'S', 'TCT': 'S', 'TTC': 'F',
+           'TTT': 'F', 'TTA': 'L', 'TTG': 'L', 'TAC': 'Y', 'TAT': 'Y', 'TAA': '*',
+           'TAG': '*', 'TGC': 'C', 'TGT': 'C', 'TGA': '*', 'TGG': 'W'}
 
 #####################
 # general functions #
@@ -721,24 +756,91 @@ def gff_parser(gff_file_name):
 
     print("Reading GFF Parser File:", gff_file_name)
 
-    try:
+    in_handle = open(gff_file_name)  # rewind file
 
-        examiner = GFFExaminer()
-        in_handle = open(gff_file_name)
-        pprint.pprint(examiner.parent_child_map(in_handle))
-        in_handle.close()
+    print("*****************************************************************************")
 
-    except IOError as e:
-        print("I/O error({0}): {1}".format(e.errno, e.strerror))
+    limit_info = dict(gff_id=["chr12"])
+
+    for rec in parse(in_handle):
+
+        print("type:", type(rec), "\nlen:", len(rec), "\nrec:", rec)
+        print("\nrecord dir:", dir(rec))
+        print("\nfeature dir:", dir(rec.features[0]))
+
+        for feature in rec.features:
+
+            print_feature(feature, 1)
+
+    print("*****************************************************************************")
+
+    in_handle.close()
 
     print("Finished Reading GFF Parser...")
 
 
+def print_feature(feature, level):
+
+    print("******* feature level:", level, feature)
+
+    for sub_feature in feature.sub_features:
+
+        print_feature(sub_feature, level + 1)
+
+
+class Parse_GFF(object):
+
+    def __init__(self, args, log):
+        # Shallow copies of the runtime environment.
+        self.log = log
+        self.args = args
+        self.parsed_structure = self.__gff_parser(self.args.gffFile)
+
+    def __gff_parser(self, gff_file_name, chromosome=None):
+
+        gff_handle = open(gff_file_name)  # rewind file
+
+        if chromosome is None:
+
+            parsed_gff = parse(gff_handle)
+
+        else:
+
+            limit_info = dict(gff_id=["chr12"])
+            parsed_gff = parse(gff_handle, limit_info)
+
+        gff_list = []
+        for gff in parsed_gff:
+            gff_list.append(gff)
+
+        gff_handle.close()
+        return gff_list
+
+    def print_gff(self):
+
+        for rec in self.parsed_structure:
+
+            print("****************** Printing Parsed GFF Structure **************************************")
+            print("type:", type(rec), "\nlen:", len(rec), "\nrec:", rec)
+            print("\nrecord dir:", dir(rec))
+            print("\nfeature dir:", dir(rec.features[0]))
+
+            for feature in rec.features:
+                self.__print_feature(feature, 1)
+
+    def __print_feature(self, feature, level):
+
+        print("******* feature level:", level, feature)
+        for sub_feature in feature.sub_features:
+            self.__print_feature(sub_feature, level + 1)
+
+
+
 def read_gff(gff_file_handle, reference_sequences):
 
-    print("Reading GFF file gene model...", file=sys.stderr)
+    global desired_gene_type_in_GFF
 
-    gff_parser(gff_file_handle)
+    print("Reading GFF file", file=sys.stderr)
 
     gene_descriptions = {}
     mRNA_parent_gene_id = {}
@@ -934,9 +1036,21 @@ class OSMGenomeComparison(object):
     def comparison(self):
 
         global verbose
+        global writer
+        global position_read_report
+        global minimum_variant_counts
+        global minimum_variant_proportion
+        global maximum_wildtype_proportion
+        global maximum_wildtype_variant_counts
+        global minimum_wildtype_total_counts
+        global missense_only
+        global cnv
+        global cnv_writer
+        global window_increment
+        global window_size
+        global cnv_report_frequency
+        global tile_position_mean
 
-
-            ##############
             # load & run #
             ##############
 
@@ -947,6 +1061,9 @@ class OSMGenomeComparison(object):
             gff_file_handle = self.args.gffFile
             wt_sam_file_handle = self.args.parentFile
             mutant_sam_file_handle = self.args.mutantFile
+
+            parse_gff = Parse_GFF(self.args, self.log)
+            parse_gff.print_gff()
 
             # load optional input arguments
             if '-vp' in sys.argv:  # threshold to report positions, if the reference nucleotide is not supported by >n% of data
