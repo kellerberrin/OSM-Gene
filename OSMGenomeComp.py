@@ -60,6 +60,7 @@
 from __future__ import print_function
 
 from BCBio.GFF.GFFParser import GFFExaminer, parse
+from Bio import SeqIO
 
 import pprint
 
@@ -752,88 +753,59 @@ def prep_gene_model(CDS_exons, gene_id):
     return gene_start, gene_end, strand, protein_length, AA_indices, CDS_exons, stop
 
 
-def gff_parser(gff_file_name):
-
-    print("Reading GFF Parser File:", gff_file_name)
-
-    in_handle = open(gff_file_name)  # rewind file
-
-    print("*****************************************************************************")
-
-    limit_info = dict(gff_id=["chr12"])
-
-    for rec in parse(in_handle):
-
-        print("type:", type(rec), "\nlen:", len(rec), "\nrec:", rec)
-        print("\nrecord dir:", dir(rec))
-        print("\nfeature dir:", dir(rec.features[0]))
-
-        for feature in rec.features:
-
-            print_feature(feature, 1)
-
-    print("*****************************************************************************")
-
-    in_handle.close()
-
-    print("Finished Reading GFF Parser...")
-
-
-def print_feature(feature, level):
-
-    print("******* feature level:", level, feature)
-
-    for sub_feature in feature.sub_features:
-
-        print_feature(sub_feature, level + 1)
-
-
-class Parse_GFF(object):
+class ParseGFFSeq(object):  # parses the input gff(3) file and annotates it with a fasta sequence
 
     def __init__(self, args, log):
         # Shallow copies of the runtime environment.
         self.log = log
         self.args = args
-        self.parsed_structure = self.__gff_parser(self.args.gffFile)
+        # Parse the fasta and gff files.
+        self.fasta_sequence = self.__read_fasta(self.args.fastaFile)
+        self.parsed_structure = self.__gff_parser(self.args.gffFile, base_dict=self.fasta_sequence)
 
-    def __gff_parser(self, gff_file_name, chromosome=None):
+
+    def __read_fasta(self, fasta_filename):
+
+        fasta_handle = open(fasta_filename)
+        seq_dict = SeqIO.to_dict(SeqIO.parse(fasta_handle, "fasta"))
+        fasta_handle.close()
+
+        return seq_dict
+
+    def __gff_parser(self, gff_file_name, base_dict=None, limit_info=None):
 
         gff_handle = open(gff_file_name)  # rewind file
 
-        if chromosome is None:
-
-            parsed_gff = parse(gff_handle)
-
-        else:
-
-            limit_info = dict(gff_id=["chr12"])
-            parsed_gff = parse(gff_handle, limit_info)
+        parsed_gff = parse(gff_handle, base_dict, limit_info)
 
         gff_list = []
         for gff in parsed_gff:
             gff_list.append(gff)
 
         gff_handle.close()
+
         return gff_list
 
-    def print_gff(self):
+    def print_gff_seq(self):
 
         for rec in self.parsed_structure:
 
             print("****************** Printing Parsed GFF Structure **************************************")
             print("type:", type(rec), "\nlen:", len(rec), "\nrec:", rec)
             print("\nrecord dir:", dir(rec))
-            print("\nfeature dir:", dir(rec.features[0]))
 
             for feature in rec.features:
                 self.__print_feature(feature, 1)
+
+            print("****************** Printing Sequence Dictionary **************************************")
+
+            print(self.parsed_structure)
 
     def __print_feature(self, feature, level):
 
         print("******* feature level:", level, feature)
         for sub_feature in feature.sub_features:
-            self.__print_feature(sub_feature, level + 1)
-
+            self.__print_feature(sub_feature, level + 1)  # recursively print lower level features.
 
 
 def read_gff(gff_file_handle, reference_sequences):
@@ -1062,8 +1034,8 @@ class OSMGenomeComparison(object):
             wt_sam_file_handle = self.args.parentFile
             mutant_sam_file_handle = self.args.mutantFile
 
-            parse_gff = Parse_GFF(self.args, self.log)
-            parse_gff.print_gff()
+            parse_gff_seq = ParseGFFSeq(self.args, self.log)
+            parse_gff_seq.print_gff_seq()
 
             # load optional input arguments
             if '-vp' in sys.argv:  # threshold to report positions, if the reference nucleotide is not supported by >n% of data
