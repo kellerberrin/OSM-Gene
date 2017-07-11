@@ -91,16 +91,21 @@ class ExecEnv(object):
                                   " and assigned the sequences to a position with respect to the"
                                   " reference genome specified by the --fasta flag"))
 
+        # --contig
+        parser.add_argument("--contig", dest="contigRegion", default="*",
+                            help=("Define which contiguous DNA region (chromosome/mitochondria) to process."
+                                  " Defaults to '*' for all contiguous regions."))
+
         # --log
-        parser.add_argument("--log", dest="logFilename", default="OSM_QSAR.log",
+        parser.add_argument("--log", dest="logFilename", default="OSM_GENE.log",
                             help=('Log file. Appends the log to any existing logs (default "OSM_QSAR.log").'
                                   'The log file always resides in the work directory.'))
         # --newlog
         parser.add_argument("--newlog", dest="newLogFilename", default="nonewlog", nargs='?',
-                            help='Flush an existing log file (file name argument optional, default "OSM_QSAR.log").'
+                            help='Flush an existing log file (file name argument optional, default "OSM_GENE.log").'
                                  'The log file always resides in the work directory.')
 
-      # --version
+        # --version
         parser.add_argument("--version", action="version", version=__version__)
 
         ExecEnv.args = parser.parse_args()

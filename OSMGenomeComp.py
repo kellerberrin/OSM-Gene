@@ -61,6 +61,8 @@ from __future__ import print_function
 
 from BCBio.GFF.GFFParser import GFFExaminer, parse
 from Bio import SeqIO
+from Bio.Alphabet import DNAAlphabet
+from Bio.SeqFeature import FeatureLocation
 
 import pprint
 
@@ -763,49 +765,74 @@ class ParseGFFSeq(object):  # parses the input gff(3) file and annotates it with
         self.fasta_sequence = self.__read_fasta(self.args.fastaFile)
         self.parsed_structure = self.__gff_parser(self.args.gffFile, base_dict=self.fasta_sequence)
 
-
     def __read_fasta(self, fasta_filename):
 
-        fasta_handle = open(fasta_filename)
-        seq_dict = SeqIO.to_dict(SeqIO.parse(fasta_handle, "fasta"))
-        fasta_handle.close()
-
+        with open(fasta_filename, 'r') as fasta_handle:
+            seq_dict = SeqIO.to_dict(SeqIO.parse(fasta_handle, "fasta"))
+        for key, seq in seq_dict.items():
+            seq.seq.alphabet = DNAAlphabet()  # The fasta file should contain DNA code.
+            self.log.info("Read DNA Fasta ID: %s, length: %d", seq.id, len(seq.seq))
         return seq_dict
 
-    def __gff_parser(self, gff_file_name, base_dict=None, limit_info=None):
 
-        gff_handle = open(gff_file_name)  # rewind file
+    def __gff_parser(self, gff_file_name, base_dict=None):
 
-        parsed_gff = parse(gff_handle, base_dict, limit_info)
+        with open(gff_file_name) as gff_handle:
+            parsed_gff = list(parse(gff_handle, base_dict=base_dict, limit_info=None))
+            for rec in parsed_gff:
+                self.log.info("Read Gff ID: %s, features: %d", rec.id, len(rec.features))
 
-        gff_list = []
-        for gff in parsed_gff:
-            gff_list.append(gff)
+        return parsed_gff
 
-        gff_handle.close()
+    def __gff_struct_print(self, gff_file_name):
 
-        return gff_list
+        with open(gff_file_name) as gff_handle:
+            examiner = GFFExaminer()
+            pprint.pprint(examiner.available_limits(gff_handle))
 
-    def print_gff_seq(self):
+    def get_id(self, ident):
 
-        for rec in self.parsed_structure:
+        for record in self.parsed_structure:
 
-            print("****************** Printing Parsed GFF Structure **************************************")
-            print("type:", type(rec), "\nlen:", len(rec), "\nrec:", rec)
-            print("\nrecord dir:", dir(rec))
+            if ident == record.id:
 
-            for feature in rec.features:
-                self.__print_feature(feature, 1)
+                return record
 
-            print("****************** Printing Sequence Dictionary **************************************")
+        return None
 
-            print(self.parsed_structure)
+    def print_gff_seq(self, ident="*"):
 
-    def __print_feature(self, feature, level):
+        print("\n****************** Fasta Structure **************************************")
+        print("Fasta type:", type(self.fasta_sequence), "\nFasta record:", self.fasta_sequence)
 
-        print("******* feature level:", level, feature)
-        for sub_feature in feature.sub_features:
-            self.__print_feature(sub_feature, level + 1)  # recursively print lower level features.
+        print("\n****************** Parsed Structure Dictionary **************************************")
+        print("Parsed type:", type(self.parsed_structure), "\nParsed record:", self.parsed_structure)
+
+        for record in self.parsed_structure:
+            ParseGFFSeq.print_gff_record(ident, record)
+
+    @staticmethod
+    def print_gff_record(ident, record):
+
+        print("\n****************** Printing Parsed GFF Structure **************************************")
+        print("Type:", type(record), "\nRecord:", record)
+
+        for feature in record.features:
+            ParseGFFSeq.__print_feature(ident, record.seq, feature, 1)
+
+    @staticmethod
+    def __print_feature(ident, seq, feature, level):
+
+        if ident == "*" or ident in feature.id:
+
+            print("\n******* feature level:", level, "\n", feature)
+
+            if feature.type == "CDS":
+                print("\nNucleotide Sequence:", feature.extract(seq))
+                print("\nProtein Amino Sequence:", feature.extract(seq).translate())
+
+            for sub_feature in feature.sub_features:
+                ParseGFFSeq.__print_feature(ident, seq, sub_feature, level + 1)  # recursively print sub_features.
 
 
 def read_gff(gff_file_handle, reference_sequences):
@@ -1035,7 +1062,10 @@ class OSMGenomeComparison(object):
             mutant_sam_file_handle = self.args.mutantFile
 
             parse_gff_seq = ParseGFFSeq(self.args, self.log)
-            parse_gff_seq.print_gff_seq()
+            record = parse_gff_seq.get_id("Pf3D7_12_v3")
+            ParseGFFSeq.print_gff_record("1211900", record)
+#            parse_gff_seq.print_gff_seq("1211900")  # Uses Minority report data.
+            sys.exit()
 
             # load optional input arguments
             if '-vp' in sys.argv:  # threshold to report positions, if the reference nucleotide is not supported by >n% of data
