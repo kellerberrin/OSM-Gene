@@ -62,7 +62,7 @@ from __future__ import print_function
 from BCBio.GFF.GFFParser import GFFExaminer, parse
 from Bio import SeqIO
 from Bio.Alphabet import DNAAlphabet
-from Bio.SeqFeature import FeatureLocation
+from Bio.SeqFeature import FeatureLocation, SeqFeature
 
 import pprint
 
@@ -663,6 +663,8 @@ def prep_gene_model(CDS_exons, gene_id):
     # prepare gene for entry into gene model
     # must consider multiple exons per gene. Can check against NT & AA sequences at end of file if available.
 
+    print("\nCDS_exons:", CDS_exons)
+
     # get very beginning & very end
     gene_start = min(CDS_exons[0][:2] + CDS_exons[-1][:2])
     gene_end = max(CDS_exons[0][:2] + CDS_exons[-1][:2])
@@ -809,6 +811,7 @@ class ParseGFFSeq(object):  # parses the input gff(3) file and annotates it with
         print("Parsed type:", type(self.parsed_structure), "\nParsed record:", self.parsed_structure)
 
         for record in self.parsed_structure:
+            print("\nParsed Record type:", type(record))
             ParseGFFSeq.print_gff_record(ident, record)
 
     @staticmethod
@@ -833,6 +836,92 @@ class ParseGFFSeq(object):  # parses the input gff(3) file and annotates it with
 
             for sub_feature in feature.sub_features:
                 ParseGFFSeq.__print_feature(ident, seq, sub_feature, level + 1)  # recursively print sub_features.
+
+    def get_gff_records(self):
+        pass
+
+class GffRecord(object):
+
+#    list[start, end, direction, ID, type, integer, list[list[integer, integer], .....], list[
+#        list[start, finish], direction, amino_seq, integer], ....], list[integer, integer], description]
+
+    def __init__(self, args, log, record):
+
+        # Shallow copies of the runtime environment.
+        self.log = log
+        self.args = args
+        self.record = record  # a valid BioPython Biopython SeqRecord
+
+    def convert_gff_record(self):
+
+        feature_record_list = []
+
+        for feature in self.record.features:
+            feature_record = self.process_feature(feature, self.record.seq)
+            feature_record_list.append(feature_record)
+
+        return feature_record_list
+
+    def process_feature(self, feature, seq):
+
+        start = int(feature.location.start)
+        end = int(feature.location.end)
+        if feature.location.strand is None:
+            self.log.error("Undefined strand for feature id:%s", feature.id)
+            sys.exit()
+        strand = "+" if feature.location.strand > 0 else "-"
+        id = feature.id
+        type = "CDS"
+        protein_length = self.process_protein_length(feature.sub_features, seq)
+        CDS_exons, AA_indices = self.process_CDS_exons(feature.sub_features, seq)
+        stop = self.process_stop(feature.sub_features, seq)
+        if "description" in feature.qualifiers:
+            description = ";".join(feature.qualifiers["description"])
+        else:
+            description = "no feature description"
+
+        return [start, end, strand, id, type, protein_length, AA_indices, CDS_exons, stop, description]
+
+    def process_protein_length(self, sub_feature_list, seq):   # recursively process all gene subfeatures looking for 'CDS'
+        return 99
+
+    def process_CDS_exons(self, sub_feature_list, seq):   # recursively process all gene subfeatures looking for 'CDS'
+
+        CDS_exons_list = []
+        AA_indicies_list = []
+
+        if sub_feature_list is not None:
+
+            for sub_feature in sub_feature_list:
+
+                print("sub_feature:", sub_feature)
+
+                if sub_feature.type == "CDS":
+
+                    start = int(sub_feature.location.start)
+                    end = int(sub_feature.location.end)
+                    if sub_feature.location.strand is None:
+                        self.log.error("Undefined strand for feature id:%s", sub_feature.id)
+                        sys.exit()
+                    strand = "+" if sub_feature.location.strand > 0 else "-"
+                    sequence = str(sub_feature.extract(seq))
+                    phase = 0
+                    if "phase" in sub_feature.qualifiers:
+                        if len(sub_feature.qualifiers["phase"]) == 1:
+                            phase = int(sub_feature.qualifiers["phase"][0])
+                    protein_length = len(sub_feature.extract(seq).translate())
+                    AA_indicies_list.append([phase, protein_length])
+                    CDS_exons_list.append([start, end, strand, sequence, phase])
+                    print("\nsequence type:", type(sequence), "sequence:", sequence, "\n\n")
+
+                CDS_exons, AA_indicies  = self.process_CDS_exons(sub_feature.sub_features, seq)
+                CDS_exons_list = CDS_exons_list + CDS_exons
+                AA_indicies_list = AA_indicies_list + AA_indicies
+
+        return CDS_exons_list, AA_indicies_list
+
+    def process_stop(self, sub_feature_list, seq):   # recursively process all gene subfeatures looking for 'CDS'
+        return []
 
 
 def read_gff(gff_file_handle, reference_sequences):
@@ -1062,10 +1151,10 @@ class OSMGenomeComparison(object):
             mutant_sam_file_handle = self.args.mutantFile
 
             parse_gff_seq = ParseGFFSeq(self.args, self.log)
-            record = parse_gff_seq.get_id("Pf3D7_12_v3")
-            ParseGFFSeq.print_gff_record("1211900", record)
-#            parse_gff_seq.print_gff_seq("1211900")  # Uses Minority report data.
-            sys.exit()
+            record = parse_gff_seq.get_id("chr12")
+            ParseGFFSeq.print_gff_record("*", record)
+            for record in GffRecord(self.args, self.log, record).convert_gff_record():
+                print("\nRecord:", record)
 
             # load optional input arguments
             if '-vp' in sys.argv:  # threshold to report positions, if the reference nucleotide is not supported by >n% of data
@@ -1148,6 +1237,11 @@ class OSMGenomeComparison(object):
 
             # load gff gene model corresponding to reference sequence
             gff_model = read_gff(gff_file_handle, reference_sequences)
+
+            for key, value in gff_model.iteritems():
+                for item in value:
+                    print("\n\n**************** gff_model:\n", item, "\n********************** gff_model:\n\n")
+
             print('\t', sum([len(gff_model[chromosome]) for chromosome in chromosomes]), 'genes', file=sys.stderr)
 
             # load sam alignment file, align to the reference sequence
