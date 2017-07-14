@@ -60,7 +60,7 @@
 from __future__ import print_function
 
 from BCBio.GFF.GFFParser import GFFExaminer, parse
-from Bio import SeqIO
+from Bio import SeqIO, Seq
 from Bio.Alphabet import DNAAlphabet
 from Bio.SeqFeature import FeatureLocation, SeqFeature
 
@@ -866,15 +866,18 @@ class GffRecord(object):
 
         start = int(feature.location.start)
         end = int(feature.location.end)
+
         if feature.location.strand is None:
             self.log.error("Undefined strand for feature id:%s", feature.id)
             sys.exit()
+
         strand = "+" if feature.location.strand > 0 else "-"
         id = feature.id
         type = "CDS"
-        protein_length = self.process_protein_length(feature.sub_features, seq)
-        CDS_exons, AA_indices = self.process_CDS_exons(feature.sub_features, seq)
-        stop = self.process_stop(feature.sub_features, seq)
+        CDS_exons, AA_indices, protein_length = self.process_CDS_exons(feature.sub_features, seq)
+
+        stop = self.process_stop(id, strand, CDS_exons)
+
         if "description" in feature.qualifiers:
             description = ";".join(feature.qualifiers["description"])
         else:
@@ -882,13 +885,11 @@ class GffRecord(object):
 
         return [start, end, strand, id, type, protein_length, AA_indices, CDS_exons, stop, description]
 
-    def process_protein_length(self, sub_feature_list, seq):   # recursively process all gene subfeatures looking for 'CDS'
-        return 99
-
     def process_CDS_exons(self, sub_feature_list, seq):   # recursively process all gene subfeatures looking for 'CDS'
 
         CDS_exons_list = []
         AA_indicies_list = []
+        whole_protein_length = 0
 
         if sub_feature_list is not None:
 
@@ -900,28 +901,136 @@ class GffRecord(object):
 
                     start = int(sub_feature.location.start)
                     end = int(sub_feature.location.end)
+
                     if sub_feature.location.strand is None:
                         self.log.error("Undefined strand for feature id:%s", sub_feature.id)
                         sys.exit()
+
                     strand = "+" if sub_feature.location.strand > 0 else "-"
                     sequence = str(sub_feature.extract(seq))
-                    phase = 0
+
                     if "phase" in sub_feature.qualifiers:
+
                         if len(sub_feature.qualifiers["phase"]) == 1:
                             phase = int(sub_feature.qualifiers["phase"][0])
-                    protein_length = len(sub_feature.extract(seq).translate())
+                        else:
+                            self.log.error("Feature id: %s; Unexpected size for qualifier 'phase' list: %d, expected 1"
+                                           , sub_feature.id, len(sub_feature.qualifiers["phase"]))
+                            sys.exit()
+
+                    else:
+
+                        self.log.error("Feature id: %s; Expected qualifier 'phase'", sub_feature.id)
+                        sys.exit()
+
+                    if "size" in sub_feature.qualifiers:
+
+                        if len(sub_feature.qualifiers["size"]) == 1:
+                            protein_length = int(sub_feature.qualifiers["size"][0])
+                        else:
+                            self.log.error("Feature id: %s; Unexpected size for qualifier 'size' list: %d, expected 1"
+                                           , sub_feature.id, len(sub_feature.qualifiers["size"]))
+                            sys.exit()
+
+                    else:
+
+                        self.log.error("Feature id: %s; Expected qualifier 'size' in 'CDS' record", sub_feature.id)
+                        sys.exit()
+
                     AA_indicies_list.append([phase, protein_length])
                     CDS_exons_list.append([start, end, strand, sequence, phase])
-                    print("\nsequence type:", type(sequence), "sequence:", sequence, "\n\n")
 
-                CDS_exons, AA_indicies  = self.process_CDS_exons(sub_feature.sub_features, seq)
+                    print("\n++++++++++++sequence type:", type(sequence), "sequence:", sequence, "\n\n")
+
+                elif sub_feature.type == "mRNA":
+
+                    if "size" in sub_feature.qualifiers:
+
+                        if len(sub_feature.qualifiers["size"]) == 1:
+
+                            whole_protein_length = int(sub_feature.qualifiers["size"][0])
+
+                        else:
+
+                            self.log.error("Feature id: %s; Unexpected size for qualifier 'size' list: %d, expected 1"
+                                           , sub_feature.id, len(sub_feature.qualifiers["size"]))
+                            sys.exit()
+
+                    else:
+
+                        self.log.error("Feature id: %s; Expected qualifier 'size' in 'mRNA' record", sub_feature.id)
+                        sys.exit()
+
+                CDS_exons, AA_indicies, whole_protein = self.process_CDS_exons(sub_feature.sub_features, seq)
                 CDS_exons_list = CDS_exons_list + CDS_exons
                 AA_indicies_list = AA_indicies_list + AA_indicies
+                whole_protein_length = whole_protein_length + whole_protein
 
-        return CDS_exons_list, AA_indicies_list
+        return CDS_exons_list, AA_indicies_list, whole_protein_length
 
-    def process_stop(self, sub_feature_list, seq):   # recursively process all gene subfeatures looking for 'CDS'
-        return []
+    def process_stop(self, id, strand, CDS_exons):   # Examine all sequences looking for a stop codon and ensure order.
+
+        stop_codons = ('TAG', 'TAA', 'TGA')
+        stop_idx = []
+
+        if not CDS_exons:  # feature contains no sequences (chromosome feature).
+            return stop_idx
+
+        for idx, sequence in enumerate(CDS_exons):
+
+            if idx >= 1:  # compare the ordering of the sequences.
+
+                previous_end = CDS_exons[idx-1][1]  # The end index of the previous sequence.
+                current_start = CDS_exons[idx][0]  # The start index of the current sequence
+
+                if strand == "+" and previous_end >= current_start:
+                    self.log.error("Feature id: %s; '+' strand, previous sequence end: %d, current start: %d"
+                                   , id, previous_end, current_start)
+                    sys.exit()
+
+                elif strand == "-" and previous_end <= current_start:
+                    self.log.error("Feature id: %s; '-' strand, previous sequence end: %d, current start: %d"
+                                   , id, previous_end, current_start)
+                    sys.exit()
+
+            seq = Seq.Seq(sequence[3], DNAAlphabet())  # re-create the sequence.
+
+            stop_idx_1 = seq.find(stop_codons[0])
+            stop_idx_2 = seq.find(stop_codons[1])
+            stop_idx_3 = seq.find(stop_codons[2])
+
+            if (stop_idx_1 > 0 and stop_idx_2 > 0) \
+                or (stop_idx_1 > 0 and stop_idx_3 > 0) \
+                or (stop_idx_2 > 0 and stop_idx_3 > 0):
+
+                self.log.error("Feature id: %s; multiple stop codons found in seq idx: %d, locations: [%d, %d, %d]"
+                               , id, idx, stop_idx_1, stop_idx_2, stop_idx_3)
+                sys.exit()
+
+            if (stop_idx_1 > 0 or stop_idx_1 > 0 or stop_idx_1 > 0) and stop_idx:
+                self.log.error("Feature id: %s; stop codon found in seq index: %d, previously found in seq index: %d"
+                               , id, idx, stop_idx[0])
+                sys.exit()
+
+            if stop_idx_1 > 0:
+                stop_idx = [idx, stop_idx_1]
+
+            if stop_idx_2 > 0:
+                stop_idx = [idx, stop_idx_2]
+
+            if stop_idx_3 > 0:
+                stop_idx = [idx, stop_idx_3]
+
+        if not stop_idx:
+            self.log.error("Feature id: %s; no stop codon found", id)
+            sys.exit()
+
+        if stop_idx[0] != (len(CDS_exons)-1):
+            self.log.error("Feature id: %s; stop codon not found in last sequence, found in seq index %d"
+                           , id, stop_idx[0])
+            sys.exit()
+
+        return stop_idx
 
 
 def read_gff(gff_file_handle, reference_sequences):
