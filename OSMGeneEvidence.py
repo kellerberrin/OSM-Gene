@@ -48,13 +48,15 @@ class GenomeEvidence(object):
         # Shallow copies of the runtime environment.
         self.log = log
         self.args = args
-        self.insert_buffer_size = 1000  # overflow for  nucleotide insertions.
+        self.insert_buffer_size = 0  # overflow for  nucleotide insertions.
         self.genome_evidence = self.genome_evidence(genome_gff)  # dict of numpy nucleotide evidence arrays
         sam_fields = "Qname Flag Rname Pos Mapquality Cigar Rnext Pnext Tlen Sequence Quality Optflags"
         self.SamRecord = namedtuple("SamRecord", sam_fields)
         self.cigar_regex = re.compile("([0-9]+[MIDNSHP=X])")
         self.CigarItem = namedtuple("CigarItem", "Code Count")
-        self.nucleotide_offset = { "A" : 0, "C" : 1, "G" : 2, "T" : 3, "-" : 5}
+        self.nucleotide_offset = { "A" : 0, "C" : 1, "G" : 2, "T" : 3, "-" : 4}
+        self.insertion = 0
+        self.deletion = 0
 
     def genome_evidence(self, genome_gff):
 
@@ -70,11 +72,14 @@ class GenomeEvidence(object):
         nucleotides = 5  # for each numpy array element allocate storage for (in order} 'A', 'C', 'G', 'T' ('U'), '-'
         seq_length = len(contig_seqrecord.seq)
         numpy_shape = (seq_length + self.insert_buffer_size, nucleotides)
-        evidence_array = np.zeros(numpy_shape, np.dtype("uint32"))  # create the numpy array
+        evidence_fixed_array = np.zeros(numpy_shape, np.dtype("uint32"))  # create the fixed numpy array
+        numpy_shape = (seq_length + self.insert_buffer_size,)
+        evidence_insert_array = np.empty(numpy_shape, dtype=object)  # create the fixed numpy array
+
         self.log.info("Contig Feature id: %s, created sequence length: %d + insert buffer %d x 5 ('A','C','G','T','-')"
                       , contig_seqrecord.id, seq_length, self.insert_buffer_size)
 
-        return [contig_seqrecord, evidence_array]
+        return [contig_seqrecord, evidence_fixed_array, evidence_insert_array]
 
     def read_sam_file(self, sam_file_name):
 
@@ -107,7 +112,8 @@ class GenomeEvidence(object):
                     self.process_sam_record(sam_record)
 
                     if line_counter % report_increment == 0:
-                        self.log.info("Processed: %d, reads", line_counter)
+                        self.log.info("Processed: %d, reads; Insertions: %d; Deletions: %d"
+                                      , line_counter, self.insertion, self.deletion)
 
         except IOError:
 
@@ -125,13 +131,14 @@ class GenomeEvidence(object):
                 self.log.warning("Region: %s, not found in evidence dictionary", sam_record.Rname)
             return
 
-        evidence_array = self.genome_evidence[sam_record.Rname][1]
+        evidence_insert_array = self.genome_evidence[sam_record.Rname][2]
+        evidence_fixed_array = self.genome_evidence[sam_record.Rname][1]
         reference_sequence = self.genome_evidence[sam_record.Rname][0]
         sam_idx = 0
 
         for cigar in cigar_list:
 
-            if cigar.Code in "MX=":
+            if cigar.Code in "MX=D":
 
                 if cigar.Count + current_position > len(reference_sequence):
                     self.log.warning("Sequence Size Exceeded at Position: %d; Region: %s, len: %d, Cigar Item: (%s,%d)"
@@ -140,14 +147,33 @@ class GenomeEvidence(object):
 
                     for idx in range(cigar.Count):
 
-                        nucleotide = sam_record.Sequence[sam_idx + idx]
-                        offset = self.nucleotide_offset[nucleotide]
-                        evidence_array[current_position + idx][offset] += 1
+                        if cigar.Code == "D":
+                            nucleotide = "-"
+                        else:
+                            nucleotide = sam_record.Sequence[sam_idx + idx]
 
-                    sam_idx += cigar.Count
+                        offset = self.nucleotide_offset[nucleotide]
+                        evidence_fixed_array[current_position + idx][offset] += 1
+
+                    if cigar.Code != "D":
+                        sam_idx += cigar.Count
+                    else:
+                        self.deletion += 1
+
                     current_position += cigar.Count
 
-            elif cigar.Code in "ND":
+            elif cigar.Code in "I":
+                if evidence_insert_array[current_position] is None:
+                    evidence_insert_array[current_position] = {}
+                insert_sequence = sam_record.Sequence[sam_idx: (sam_idx+cigar.Count)]
+                if insert_sequence in evidence_insert_array[current_position]:
+                    evidence_insert_array[current_position][insert_sequence] += 1
+                else:
+                    evidence_insert_array[current_position][insert_sequence] = 1
+                sam_idx += cigar.Count
+                self.insertion += 1
+
+            elif cigar.Code in "N":
                 current_position += cigar.Count
 
         return
