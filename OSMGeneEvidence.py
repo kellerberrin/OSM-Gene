@@ -37,6 +37,7 @@ import numpy as np
 
 from math import pi, sqrt, exp, log
 from collections import namedtuple
+import re
 import sys
 import os
 
@@ -49,8 +50,11 @@ class GenomeEvidence(object):
         self.args = args
         self.insert_buffer_size = 1000  # overflow for  nucleotide insertions.
         self.genome_evidence = self.genome_evidence(genome_gff)  # dict of numpy nucleotide evidence arrays
-        sam_fields = "Qname Flag Rname Pos Mapq Cigar Rnext Pnext Tlen Seq Qual OptF"
+        sam_fields = "Qname Flag Rname Pos Mapquality Cigar Rnext Pnext Tlen Sequence Quality Optflags"
         self.SamRecord = namedtuple("SamRecord", sam_fields)
+        self.cigar_regex = re.compile("([0-9]+[MIDNSHP=X])")
+        self.CigarItem = namedtuple("CigarItem", "Code Count")
+        self.nucleotide_offset = { "A" : 0, "C" : 1, "G" : 2, "T" : 3, "-" : 5}
 
     def genome_evidence(self, genome_gff):
 
@@ -100,6 +104,8 @@ class GenomeEvidence(object):
                     req_sam_fields += opt_sam_fields  # should now be 12 fields, opt may be []
                     sam_record = self.SamRecord(*req_sam_fields)
 
+                    self.process_sam_record(sam_record)
+
                     if line_counter % report_increment == 0:
                         self.log.info("Processed: %d, reads", line_counter)
 
@@ -109,3 +115,49 @@ class GenomeEvidence(object):
             sys.exit()
 
 
+    def process_sam_record(self, sam_record):
+
+        cigar_list = self.decode_cigar(sam_record.Cigar)  # returns a list of cigar tuples (Code, Count)
+        current_position = int(sam_record.Pos) - 1     # The 1 offset convention in sam files.
+
+        if sam_record.Rname not in self.genome_evidence:
+            if sam_record.Rname not in "*":
+                self.log.warning("Region: %s, not found in evidence dictionary", sam_record.Rname)
+            return
+
+        evidence_array = self.genome_evidence[sam_record.Rname][1]
+        reference_sequence = self.genome_evidence[sam_record.Rname][0]
+        sam_idx = 0
+
+        for cigar in cigar_list:
+
+            if cigar.Code in "MX=":
+
+                if cigar.Count + current_position > len(reference_sequence):
+                    self.log.warning("Sequence Size Exceeded at Position: %d; Region: %s, len: %d, Cigar Item: (%s,%d)"
+                                , current_position, sam_record.Rname, len(reference_sequence), cigar.Code, cigar.Count)
+                else:
+
+                    for idx in range(cigar.Count):
+
+                        nucleotide = sam_record.Sequence[sam_idx + idx]
+                        offset = self.nucleotide_offset[nucleotide]
+                        evidence_array[current_position + idx][offset] += 1
+
+                    sam_idx += cigar.Count
+                    current_position += cigar.Count
+
+            elif cigar.Code in "ND":
+                current_position += cigar.Count
+
+        return
+
+    def decode_cigar(self, cigar):
+
+        cigar_list = []
+        for cigar_item in re.findall(self.cigar_regex, cigar):
+            cigar_code = cigar_item[-1]
+            cigar_count = int(cigar_item[:-1])
+            cigar_list.append(self.CigarItem(Code=cigar_code, Count=cigar_count))
+
+        return cigar_list
