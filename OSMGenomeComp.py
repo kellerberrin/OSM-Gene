@@ -66,7 +66,9 @@ from Bio.SeqFeature import FeatureLocation, SeqFeature
 
 import pprint
 
-from OSMGFFParser import ParseGFFSeq, GffAdapter, read_gff
+from OSMGFFParser import ParseGFFSeq, GffAdapter, read_gff, reverse_compliment
+
+from OSMGeneEvidence import GenomeEvidence
 
 from math import pi, sqrt, exp, log
 from collections import namedtuple
@@ -89,7 +91,7 @@ description_key = 'description'
 GTF = False
 trust_nonmatching_alignment = True
 position_read_report = False
-verbose = False
+verbose = True
 debug = False
 missense_only = True
 writer = False
@@ -426,12 +428,20 @@ def does_mutation_change_amino_acid(genomic_position, variant_nucleotide, gene_m
             # check if this position occurs before the stop codon
             if i < stop_exon or position_in_coding / 3 <= codon_stop:
 
-                codon_start = position_in_coding / 3 * 3 + coding_start
+                codon_start = int(position_in_coding / 3 * 3 + coding_start)
                 position_in_codon = position_in_exon - codon_start
                 gene_position += position_in_coding
 
+
                 # look up 3 nucleotide codon by auto-rounding with integer vs float remainder of division, and accounting for start index
-                reference_codon = sequence[codon_start: (position_in_coding / 3 + 1) * 3 + coding_start]
+                try:
+                    reference_codon = sequence[codon_start: int((position_in_coding / 3 + 1) * 3 + coding_start)]
+                except TypeError:
+                    print("codon_start:", codon_start, file=sys.stderr)
+                    print("position_in_coding:", position_in_coding, file=sys.stderr)
+                    print("coding_start:", coding_start, file=sys.stderr)
+                    print("Calc Index:", (position_in_coding / 3 + 1) * 3 + coding_start, file=sys.stderr)
+                    sys.exit()
 
                 reference_codon_2 = reference_codon
 
@@ -498,9 +508,9 @@ def does_mutation_change_amino_acid(genomic_position, variant_nucleotide, gene_m
                     except:
                         if verbose:
                             print(
-                                'translation problem: reference_codon, genomic_position, position_in_coding, coding_start, variant_nucleotide, gene_start, gene_end, strand, len(sequence), [ i[:2] for i in CDS_exons], variant_codon',
+                                'translation problem: gene_id, reference_codon, genomic_position, position_in_coding, coding_start, variant_nucleotide, gene_start, gene_end, strand, len(sequence), [ i[:2] for i in CDS_exons], variant_codon',
                                 file=sys.stderr)
-                            print('translation problem:', reference_codon, genomic_position, position_in_coding,
+                            print('translation problem:', gene_id, reference_codon, genomic_position, position_in_coding,
                                   coding_start, variant_nucleotide, gene_start, gene_end, strand, len(sequence),
                                   [i[:2] for i in CDS_exons], variant_codon, file=sys.stderr)
 
@@ -712,9 +722,9 @@ class OSMGenomeComparison(object):
             mutant_sam_file_handle = self.args.mutantFile
 
             parse_gff_seq = ParseGFFSeq(self.args, self.log)
-            chr12_record = parse_gff_seq.get_id("chr12")
-            ParseGFFSeq.print_gff_record("*", chr12_record)
-            adapted_gff_model = GffAdapter(self.args, self.log).adapt_chromosome_seqrecord(chr12_record)
+#            chr12_record = parse_gff_seq.get_id("chr12")
+#            ParseGFFSeq.print_gff_record("*", chr12_record)
+#            adapted_gff_model = GffAdapter(self.args, self.log).adapt_chromosome_seqrecord(chr12_record)
 
             # load optional input arguments
             if '-vp' in sys.argv:  # threshold to report positions, if the reference nucleotide is not supported by >n% of data
@@ -791,6 +801,10 @@ class OSMGenomeComparison(object):
                 print('\tminimum variant counts', minimum_variant_counts, file=sys.stderr)
                 print('\tmaximum wildtype counts', maximum_wildtype_variant_counts, file=sys.stderr)
 
+            genome_evidence = GenomeEvidence(self.args, self.log, parse_gff_seq.parsed_structure)
+            genome_evidence.read_sam_file(wt_sam_file_handle)
+            sys.exit()
+
             # load input sequence
             wt_sequence_evidence, mutant_sequence_evidence, reference_sequences, chromosomes = make_evidence_hash_table(
                 reference_sequence_file_handle)
@@ -807,6 +821,7 @@ class OSMGenomeComparison(object):
 
             GffAdapter(self.args, self.log).compare_minority_dict(gff_model, adapted_gff_model)
 
+#            gff_model = adapted_gff_model
 
             print('\t', sum([len(gff_model[chromosome]) for chromosome in chromosomes]), 'genes', file=sys.stderr)
 

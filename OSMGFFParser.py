@@ -433,9 +433,6 @@ class GffAdapter(object):
 
     def process_feature(self, feature, seq):
 
-        start = int(feature.location.start)
-        end = int(feature.location.end)
-
         if feature.location.strand is None:
             self.log.error("Undefined strand for feature id:%s", feature.id)
             sys.exit()
@@ -443,16 +440,16 @@ class GffAdapter(object):
         strand = "+" if feature.location.strand > 0 else "-"
         id = feature.id
         type = "CDS"
-        CDS_exons, AA_indices, nucleotide_length, AA_total_length = self.process_CDS_exons(feature.sub_features, seq)
+        CDS_exons, AA_indices, nucleotide_length, CDS_start, CDS_end = self.process_CDS_exons(feature.sub_features, seq)
 
         AA_indices = self.convert_AA_indices(AA_indices)
 
         if nucleotide_length % 3 != 0:
             self.log.warning("Feature id: %s, nucleotide length: %d is not modulo 3", feature.id, nucleotide_length)
 
-        protein_length = int(nucleotide_length // 3) - 1 ## Remove the stop codon.
-
         stop = self.process_stop(id, nucleotide_length, strand, CDS_exons)
+
+        protein_length = int(nucleotide_length // 3) -1
 
         if "description" in feature.qualifiers:
             description = ";".join(feature.qualifiers["description"])
@@ -461,7 +458,7 @@ class GffAdapter(object):
 
         CDS_exon_list = [list(CDS) for CDS in CDS_exons]  # Convert a list of namedtuples to a list of lists
 
-        return self.Feature(GeneStart=start, GeneEnd=end, Strand=strand, Id=id, Type=type, ProteinLen=protein_length
+        return self.Feature(GeneStart=CDS_start, GeneEnd=CDS_end, Strand=strand, Id=id, Type=type, ProteinLen=protein_length
                             , AA_indices=AA_indices, CDS_exons=CDS_exon_list, Stop=stop, Description=description)
 
     def convert_AA_indices(self, AA_indices):  # List of named tuple Extended_AA_Indices
@@ -483,82 +480,88 @@ class GffAdapter(object):
 
         return converted_AA_indices
 
-    def process_CDS_exons(self, sub_feature_list, seq):   # recursively process all gene subfeatures looking for 'CDS'
+    def get_CDS_list(self, sub_feature_list):  # recursively descend the feature tree and create a list of CDS features.
 
-        CDS_exons_list = []
-        AA_indicies_list = []
-        whole_nucleotide_length = 0
-        total_AA_length = 0
+        CDS_list = []
 
         if sub_feature_list is not None:
 
             for sub_feature in sub_feature_list:
 
-                print("sub_feature:", sub_feature)
-
                 if sub_feature.type == "CDS":
 
-                    start = int(sub_feature.location.start)
-                    end = int(sub_feature.location.end)
+                    CDS_list.append(sub_feature)
 
-                    if sub_feature.location.strand is None:
-                        self.log.error("Undefined strand for feature id: %s", sub_feature.id)
-                        sys.exit()
+                CDS_list = CDS_list + self.get_CDS_list(sub_feature.sub_features)
 
-                    strand = "+" if sub_feature.location.strand > 0 else "-"
-                    sequence = str(sub_feature.extract(seq))
+        return CDS_list
 
-                    if "phase" in sub_feature.qualifiers:
+    def process_CDS_exons(self, sub_feature_list, seq):   # recursively process all gene subfeatures looking for 'CDS'
 
-                        if len(sub_feature.qualifiers["phase"]) == 1:
-                            phase = int(sub_feature.qualifiers["phase"][0])
-                        else:
-                            self.log.error("Feature id: %s; Unexpected size for qualifier 'phase' list: %d, expected 1"
-                                           , sub_feature.id, len(sub_feature.qualifiers["phase"]))
-                            sys.exit()
+        CDS_exons_list = []
+        AA_indicies_list = []
+        sum_nucleotide_length = 0
+        CDS_start = 0
+        CDS_end = 0
 
-                    else:
+        for CDS_feature in self.get_CDS_list(sub_feature_list):
 
-                        self.log.error("Feature id: %s; Expected qualifier 'phase'", sub_feature.id)
-                        sys.exit()
+            start = int(CDS_feature.location.start)
+            end = int(CDS_feature.location.end)
 
-                    if "size" in sub_feature.qualifiers:
+            if CDS_start == 0 or start < CDS_start:
+                CDS_start = start
 
-                        if len(sub_feature.qualifiers["size"]) == 1:
+            if CDS_end == 0 or end > CDS_end:
+                CDS_end = end
 
-                            nucleotide_length = int(sub_feature.qualifiers["size"][0])
-                            whole_nucleotide_length += nucleotide_length
+            if CDS_feature.location.strand is None:
+                self.log.error("Undefined strand for feature id: %s", CDS_feature.id)
+                sys.exit()
 
-                        else:
-                            self.log.error("Feature id: %s; Unexpected size for qualifier 'size' list: %d, expected 1"
-                                           , sub_feature.id, len(sub_feature.qualifiers["size"]))
-                            sys.exit()
+            strand = "+" if CDS_feature.location.strand > 0 else "-"
+            sequence = str(CDS_feature.extract(seq))
 
-                    else:
+            if "phase" in CDS_feature.qualifiers:
 
-                        self.log.error("Feature id: %s; Expected qualifier 'size' in 'CDS' record", sub_feature.id)
-                        sys.exit()
+                if len(CDS_feature.qualifiers["phase"]) == 1:
+                    phase = int(CDS_feature.qualifiers["phase"][0])
+                else:
+                    self.log.error("Feature id: %s; Unexpected size for qualifier 'phase' list: %d, expected 1"
+                                   , CDS_feature.id, len(CDS_feature.qualifiers["phase"]))
+                    sys.exit()
 
-                    protein_length = int((nucleotide_length-phase) // 3)
-                    extend_AA_Indices = self.Extended_AA_Indices(Phase=phase, ProteinLen=protein_length
-                                                                 ,  NucleotideLen=nucleotide_length)
-                    AA_indicies_list.append(extend_AA_Indices)
-                    CDS_exons_list.append(self.CDS_exons(Start=start, End=end, Strand=strand
-                                                         , Sequence=sequence, Phase=phase))
+            else:
 
-                    print("\n++++++++++++sequence type:", type(sequence), "sequence:", sequence, "\n\n")
+                self.log.error("Feature id: %s; Expected qualifier 'phase'", CDS_feature.id)
+                sys.exit()
 
-                elif sub_feature.type == "mRNA":
+            if "size" in CDS_feature.qualifiers:
 
-                    total_AA_length = len(sub_feature.extract(seq).translate())
+                if len(CDS_feature.qualifiers["size"]) == 1:
 
-                CDS_exons, AA_indicies, whole_nucleotide, AA_length = self.process_CDS_exons(sub_feature.sub_features, seq)
-                CDS_exons_list = CDS_exons_list + CDS_exons
-                AA_indicies_list = AA_indicies_list + AA_indicies
-                whole_nucleotide_length = whole_nucleotide_length + whole_nucleotide
-                total_AA_length = total_AA_length + AA_length
+                    nucleotide_length = int(CDS_feature.qualifiers["size"][0])
 
-        return CDS_exons_list, AA_indicies_list, whole_nucleotide_length, total_AA_length
+                else:
+                    self.log.error("Feature id: %s; Unexpected size for qualifier 'size' list: %d, expected 1"
+                                   , CDS_feature.id, len(CDS_feature.qualifiers["size"]))
+                    sys.exit()
+
+            else:
+
+                self.log.error("Feature id: %s; Expected qualifier 'size' in 'CDS' record", CDS_feature.id)
+                sys.exit()
+
+            sum_nucleotide_length += nucleotide_length
+            protein_length = int((nucleotide_length-phase) // 3)
+            AA_indicies_list.append(self.Extended_AA_Indices(Phase=phase, ProteinLen=protein_length
+                                                             ,  NucleotideLen=nucleotide_length))
+            CDS_exons_list.append(self.CDS_exons(Start=start, End=end, Strand=strand
+                                                 , Sequence=sequence, Phase=phase))
+
+            print("\n++++++++++++sequence type:", type(sequence), "sequence:", sequence, "\n\n")
+
+        return CDS_exons_list, AA_indicies_list, sum_nucleotide_length, CDS_start, CDS_end
 
     def process_stop(self, id, nucleotide_length, strand, CDS_exons):   # Examine all sequences looking for a stop codon and ensure order.
 
@@ -572,15 +575,15 @@ class GffAdapter(object):
         if not CDS_exons:  # feature contains no sequences (chromosome feature).
             return stop_idx
 
-        for idx, sequence in enumerate(CDS_exons):
+        for idx, exon in enumerate(CDS_exons):
 
-            phase = sequence[4]
-            search_seq = sequence[3][phase:]
+            phase = exon.Phase
+            search_seq = exon.Sequence[phase:]
 
             if idx >= 1:  # compare the ordering of the sequences.
 
-                previous_end = CDS_exons[idx-1][1]  # The end index of the previous sequence.
-                current_start = CDS_exons[idx][0]  # The start index of the current sequence
+                previous_end = CDS_exons[idx-1].End  # The end index of the previous sequence.
+                current_start = CDS_exons[idx].Start  # The start index of the current sequence
 
                 if strand == "+" and previous_end >= current_start:
                     self.log.error("Feature id: %s; '+' strand, previous sequence end: %d, current start: %d"
@@ -631,27 +634,22 @@ class GffAdapter(object):
                 self.log.warning("Feature id: %s; multiple stop codons seq phase: %d, sequence: %d, codon locations: ['TAG' %d, 'TAA' %d, 'TGA' %d]"
                                  , id, phase, idx, stop_idx_1, stop_idx_2, stop_idx_3)
 
-            if (stop_idx_1 >= 0 or stop_idx_1 >= 0 or stop_idx_1 >= 0) and stop_idx:
+            stop_idx_0 = max(stop_idx_1, stop_idx_2, stop_idx_3)
+
+            if stop_idx_0 >= 0 and stop_idx:
                 self.log.warning("Feature id: %s; stop codon found in sequence: %d, previously found in sequence: %d"
                                  , id, idx, stop_idx[0])
 
-            if stop_idx_1 >= 0:
-                stop_idx = [idx, stop_idx_1]
-
-            if stop_idx_2 >= 0:
-                stop_idx = [idx, stop_idx_2]
-
-            if stop_idx_3 >= 0:
-                stop_idx = [idx, stop_idx_3]
+            if stop_idx_0 >= 0:
+                stop_idx = [idx, stop_idx_0]
 
         if not stop_idx:
-            self.log.error("Feature id: %s; no stop codon found", id)
-            sys.exit()
+            self.log.warning("Feature id: %s; no stop codon found, last codon on last sequence assumed", id)
+            stop_idx = [len(CDS_exons)-1, int(len(CDS_exons[-1].Sequence[CDS_exons[-1].Phase:]) // 3)-1]
 
         if stop_idx[0] != (len(CDS_exons)-1):
-            self.log.error("Feature id: %s; stop codon not found in last sequence, found in seq index %d"
-                           , id, stop_idx[0])
-            sys.exit()
+            self.log.warning("Feature id: %s; stop codon not found in last sequence, found in seq index %d, codon %d"
+                             , id, stop_idx[0], stop_idx[1])
 
         return stop_idx
 
@@ -748,8 +746,6 @@ class GffAdapter(object):
 
                     if not_found:
                         self.log.error("Feature id: %s found in dict_b, Not Found in dict_a", feature_b[3])
-
-                sys.exit()
 
         return compare_result
 
