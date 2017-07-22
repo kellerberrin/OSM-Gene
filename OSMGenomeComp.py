@@ -70,6 +70,9 @@ from OSMGFFParser import ParseGFFSeq, GffAdapter, read_gff, reverse_compliment
 
 from OSMGeneEvidence import GenomeEvidence
 
+from OSMGeneAnalysis import GeneDictionary
+
+
 from math import pi, sqrt, exp, log
 from collections import namedtuple
 import sys
@@ -722,6 +725,7 @@ class OSMGenomeComparison(object):
             mutant_sam_file_handle = self.args.mutantFile
 
             parse_gff_seq = ParseGFFSeq(self.args, self.log)
+            GeneDictionary(self.args, self.log, parse_gff_seq.parsed_structure).print_contig_dict()
 #            chr12_record = parse_gff_seq.get_id("chr12")
 #            ParseGFFSeq.print_gff_record("*", chr12_record)
 #            adapted_gff_model = GffAdapter(self.args, self.log).adapt_chromosome_seqrecord(chr12_record)
@@ -801,8 +805,12 @@ class OSMGenomeComparison(object):
                 print('\tminimum variant counts', minimum_variant_counts, file=sys.stderr)
                 print('\tmaximum wildtype counts', maximum_wildtype_variant_counts, file=sys.stderr)
 
-            genome_evidence = GenomeEvidence(self.args, self.log, parse_gff_seq.parsed_structure)
-            genome_evidence.read_sam_file(wt_sam_file_handle)
+            mutant_evidence = GenomeEvidence(self.args, self.log, parse_gff_seq.parsed_structure)
+            parent_evidence = GenomeEvidence(self.args, self.log, parse_gff_seq.parsed_structure)
+
+            mutant_evidence.read_sam_file(self.args.mutantFile)
+            parent_evidence.read_sam_file(self.args.parentFile)
+
             sys.exit()
 
             # load input sequence
