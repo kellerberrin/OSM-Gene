@@ -39,7 +39,7 @@ class GeneDictionary(object):
         # Shallow copies of the runtime environment.
         self.log = log
         self.args = args
-        self.ContigRecord = namedtuple("ContigRecord", "Contig Genedict Genelist")
+        self.ContigRecord = namedtuple("ContigRecord", "Contig Genedict Genelist CDSlist")
         self.contig_dict = self.genome_contig_dict(genome_gff)
 
     def get_gene_id(self, contig_id, gene_id):
@@ -54,14 +54,21 @@ class GeneDictionary(object):
         contig_dict = {}
         for contig_seqrecord in genome_gff:
 
+            gene_dict = self.get_gene_dict(contig_seqrecord)  # lookup using gene id.
             gene_list = self.sorted_gene_list(contig_seqrecord)  # sorted by increasing contig sequence position
-            gene_dict = {}
-            for gene in contig_seqrecord.features:  # process all the features in a biopython seqrecord contig object.
-                gene_dict[gene.id] = gene
+            CDS_list = self.sorted_CDS_list(contig_seqrecord)  # sorted by increasing contig sequence position
 
-            contig_dict[contig_seqrecord.id] = self.ContigRecord(*[contig_seqrecord, gene_dict, gene_list])
+            contig_dict[contig_seqrecord.id] = self.ContigRecord(*[contig_seqrecord, gene_dict, gene_list, CDS_list])
 
         return contig_dict
+
+    def get_gene_dict(self,  contig_seqrecord):
+
+        gene_dict = {}
+        for gene in contig_seqrecord.features:  # process all the features in a biopython seqrecord contig object.
+            gene_dict[gene.id] = gene
+
+        return gene_dict
 
     def sorted_gene_list(self, contig_seqrecord):
 
@@ -71,9 +78,37 @@ class GeneDictionary(object):
 
         return sorted(gene_list, key=lambda g: g.location.start)
 
+    def sorted_CDS_list(self, contig_seqrecord):
+
+        CDS_list = []
+        for gene in contig_seqrecord.features:
+            CDS_list = CDS_list + self.get_CDS_list(gene.sub_features)
+
+        return sorted(CDS_list, key=lambda cds: cds.location.start)
+
+    def get_CDS_list(self, sub_feature_list):  # recursively descend the feature tree and create a list of CDS features.
+
+        CDS_list = []
+
+        if sub_feature_list is not None:
+
+            for sub_feature in sub_feature_list:
+
+                if sub_feature.type == "CDS":
+
+                    CDS_list.append(sub_feature)
+
+                CDS_list = CDS_list + self.get_CDS_list(sub_feature.sub_features)
+
+        return CDS_list
+
     def print_contig_dict(self):
 
         for contigkey, contigvalue in self.contig_dict.items():
             print("\n******* Contig:", contigvalue.Contig)
-            for gene in contigvalue.Genelist:
-                print("\n%%% Gene:", gene)
+            for gene in contigvalue.CDSlist:
+                print("\n%%% CDS:", gene)
+
+
+class GeneAnalysis(object):
+    pass
