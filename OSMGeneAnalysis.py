@@ -25,10 +25,7 @@
 
 from __future__ import print_function,  division
 
-import numpy as np
-
 from collections import namedtuple
-import sys
 
 from OSMGeneEvidence import GenomeEvidence
 
@@ -41,13 +38,6 @@ class GeneDictionary(object):
         self.args = args
         self.ContigRecord = namedtuple("ContigRecord", "Contig Genedict Genelist CDSlist")
         self.contig_dict = self.genome_contig_dict(genome_gff)
-
-    def get_gene_id(self, contig_id, gene_id):
-
-        if contig_id in self.contig_dict:
-            if gene_id in self.contig_dict[contig_id].Genedict:
-                return self.contig_dict[contig_id].Genedict[gene_id]
-        return None
 
     def genome_contig_dict(self, genome_gff):
 
@@ -111,4 +101,12 @@ class GeneDictionary(object):
 
 
 class GeneAnalysis(object):
-    pass
+
+    def __init__(self, args, log, genome_gff, sam_file_name):
+        # Shallow copies of the runtime environment.
+        self.log = log
+        self.args = args
+        self.gene_dictionary = GeneDictionary(self.args, self.log, genome_gff)
+        self.gene_evidence = GenomeEvidence(self.args, self.log, genome_gff)
+        self.gene_evidence.read_sam_file(sam_file_name)
+

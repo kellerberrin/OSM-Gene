@@ -31,7 +31,6 @@ from collections import namedtuple
 import re
 import sys
 
-
 # Collect the SAM file single end reads (double ended reads not supported yet.
 # Nucleotide counts and deletions go into an unsigned integer numpy area the same size as the contig. region sequence.
 # Insertions are entered into a numpy array of objects initially set to None. Insertions are added at the
@@ -56,6 +55,8 @@ class GenomeEvidence(object):
         self.unmapped_read = 0
         self.nucleotide_mismatch = 0
         self.mismatch_threshold = 10
+        self.verbose = False
+
 
     def genome_evidence(self, genome_gff):
 
@@ -114,6 +115,9 @@ class GenomeEvidence(object):
                         self.log.info("Processed: %d reads; Unmapped: %d, Insert: %d; Delete: %d; Mismatch: %d"
                             , line_counter, self.unmapped_read, self.insertion, self.deletion, self.nucleotide_mismatch)
 
+            self.log.info("****Completed Processing: %d reads; Unmapped: %d, Insert: %d; Delete: %d; Mismatch: %d"
+                          , line_counter, self.unmapped_read, self.insertion, self.deletion, self.nucleotide_mismatch)
+
         except IOError:
 
             self.log.error("Problem processing SAM file: %s - check the file name and directory", sam_file_name)
@@ -159,7 +163,7 @@ class GenomeEvidence(object):
                     offset = self.nucleotide_offset[sam_nucleotide]
                     evidence_fixed_array[current_position + idx][offset] += 1
 
-                if mismatch >= self.mismatch_threshold:
+                if mismatch >= self.mismatch_threshold and self.verbose:
                     self.log.info("Mismatch: %d, Region: %s, Location: %d, Ref Seq: %s, Sam Seq: %s, Cigar Item: (%s,%d), Cigar: %s, Flag: %d, OptFlag: %s"
                                   , mismatch, sam_record.Rname, current_position
                                   , reference_sequence[current_position: (current_position + cigar.Count)]
