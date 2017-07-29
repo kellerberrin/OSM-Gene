@@ -23,7 +23,7 @@
 #
 #
 
-from __future__ import print_function,  division
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import numpy as np
 
@@ -39,6 +39,8 @@ import sys
 
 class GenomeEvidence(object):
 
+    nucleotide_offset = {"A": 0, "C": 1, "G": 2, "T": 3, "-": 4}
+
     def __init__(self, args, log, genome_gff):
         # Shallow copies of the runtime environment.
         self.log = log
@@ -49,14 +51,17 @@ class GenomeEvidence(object):
         self.SamRecord = namedtuple("SamRecord", sam_fields)
         self.cigar_regex = re.compile("([0-9]+[MIDNSHP=X])")
         self.CigarItem = namedtuple("CigarItem", "Code Count")
-        self.nucleotide_offset = { "A" : 0, "C" : 1, "G" : 2, "T" : 3, "-" : 4}
         self.insertion = 0
         self.deletion = 0
         self.unmapped_read = 0
         self.nucleotide_mismatch = 0
         self.mismatch_threshold = 10
         self.verbose = False
+        self.EvidenceFields = namedtuple("EvidenceFields", "Contigrecord Contigfixedarray Contifinsertarray")
 
+    def get_contig_evidence(self, contig_id):
+
+        return self.EvidenceFields(*self.genome_evidence[contig_id])
 
     def genome_evidence(self, genome_gff):
 
@@ -160,7 +165,7 @@ class GenomeEvidence(object):
                     if sam_nucleotide != ref_nucleotide:
                         mismatch += 1
 
-                    offset = self.nucleotide_offset[sam_nucleotide]
+                    offset = GenomeEvidence.nucleotide_offset[sam_nucleotide]
                     evidence_fixed_array[current_position + idx][offset] += 1
 
                 if mismatch >= self.mismatch_threshold and self.verbose:

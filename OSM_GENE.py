@@ -24,13 +24,11 @@
 #
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-
 import time
-
+import cProfile
 
 # Import the runtime environment object.
 from OSMExecEnv import ExecEnv, __version__
-
 
 
 # ===================================================================================================
@@ -53,22 +51,24 @@ def main():
         ExecEnv.log.info("############ OSM_GENE %s End Comparison ###########", __version__)
 
     except KeyboardInterrupt:
+
         ExecEnv.log.warning("\n\n")
         ExecEnv.log.warning("Control-C pressed. Program terminates. Open files may be in an unsafe state.")
 
     except IOError:
+
         ExecEnv.log.fatal("File error. Check directories, file names and permissions."
                           ' Check the default work directory "--dir" and --help".')
         ExecEnv.log.fatal("OSM_GENE exits.")
 
     except SystemExit:
 
-        ExecEnv.print_description()
+        ExecEnv.log.info(ExecEnv.print_description())
         ExecEnv.log.info("OSM_GENE exits.")
 
     finally:
 
         clean_up = None  # Placeholder for any cleanup code.
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

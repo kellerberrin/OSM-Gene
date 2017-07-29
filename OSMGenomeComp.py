@@ -38,7 +38,8 @@ class OSMGenomeComparison(object):
 
     def comparison(self):
 
-            parsed_gff = ParseGFFSeq(self.args, self.log).parsed_structure
-            parent_gene_analysis = GeneAnalysis(self.args, self.log, parsed_gff, self.args.parentFile)
-            mutant_gene_analysis = GeneAnalysis(self.args, self.log, parsed_gff, self.args.mutantFile)
-
+        parsed_gff = ParseGFFSeq(self.args, self.log).parsed_structure
+#        parent_gene_analysis = GeneAnalysis(self.args, self.log, parsed_gff, self.args.parentFile)
+#        parent_gene_analysis.print_contig_stats()
+        mutant_gene_analysis = GeneAnalysis(self.args, self.log, parsed_gff, self.args.mutantFile)
+        mutant_gene_analysis.print_contig_stats()
