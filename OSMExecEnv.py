@@ -35,7 +35,7 @@ from OSMGenomeComp import OSMGenomeComparison
 
 # ===================================================================================================
 # A utility class to parse the program runtime arguments
-# and setup a logger to receive classification output.
+# and setup a logger to receive analysis output.
 # ===================================================================================================
 
 class ExecEnv(object):
@@ -112,7 +112,7 @@ class ExecEnv(object):
                                   " genome."))
 
         # "minimum_variant_proportion" in Jeremy Horst's code
-        parser.add_argument("--mutantprop", dest="minMutantProportion", default=0.5,
+        parser.add_argument("--mutantprop", dest="minMutantProportion", default=0.7,
                             help=("The min proportion of a single nucleotide analyzed in the Mutant genome that is at "
                                   " variance from the parent (wild-type) genome"))
 
@@ -131,6 +131,9 @@ class ExecEnv(object):
                             help=("The minimum SAM/BAM count of a single nucleotide analyzed in the Parent (wild-type) "
                                   "genome that is to be compared to the Mutant genome"))
 
+        parser.add_argument("--processes", dest="processCount", default=4,
+                            help=("The number of CPU processes (not threads!) assigned to processing SAM genome data"))
+
         # --version
         parser.add_argument("--version", action="version", version=__version__)
 
@@ -146,7 +149,7 @@ class ExecEnv(object):
             self.setup_file_logging(ExecEnv.args.newLogFilename, log_append, file_log_format)
 
         elif ExecEnv.args.newLogFilename != "nonewlog":  # No filename supplied (optional arg).
-            ExecEnv.args.newLogFilename = os.path.join(ExecEnv.args.workDirectory,"OSM_QSAR.log")
+            ExecEnv.args.newLogFilename = os.path.join(ExecEnv.args.workDirectory,"OSM_GENE.log")
             log_append = False
             self.setup_file_logging(ExecEnv.args.newLogFilename, log_append, file_log_format)
 

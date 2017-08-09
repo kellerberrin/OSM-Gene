@@ -1,16 +1,17 @@
-OSM_QSAR
+OSM_GENE
 ========
 
-Open Source Malaria Ligand Classification Toolkit
--------------------------------------------------
+Genome Comparison Toolkit
+-------------------------
 
-A modular toolkit that simplifies the development of user models for 
-predicting ligand potency. 
+A toolkit that uses SAM/BAM files to analyze Single Nucleotide Polymorphisms (SNP) in wild-type
+(parent) and mutant organisms. 
 
 This software currently resides in the GitHub repository:
-https://github.com/kellerberrin/OSM-QSAR
+https://github.com/kellerberrin/OSM-Gene
 
-OSM_QSAR software is designed to be a software toolkit to simplify the development of 
+OSM_Gene software compares the (optional) parent wild-type organism SAM to a reference FASTA sequence
+and designed to be a software toolkit to simplify the development of 
 ligand molecular screening and classification using Machine Learning techniques. 
 User models are designed to "plug-in" to OSM_QSAR with minimal coding. 
 A neural network classifier can be specified and tested with 20 lines of python code. 
