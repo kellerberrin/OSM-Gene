@@ -26,12 +26,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import numpy as np
-
 import multiprocessing
 from multiprocessing.sharedctypes import RawArray
 from ctypes import c_uint32, c_bool
-import threading
-import itertools
 from collections import namedtuple
 import re
 import sys
@@ -40,6 +37,31 @@ import sys
 # Nucleotide counts and deletions go into an unsigned integer numpy area the same size as the contig. region sequence.
 # Insertions are entered into a numpy array of objects initially set to None. Insertions are added at the
 # appropriate sequence index as dictionaries indexed by inserted sequence with count as value.
+
+class GranularityLock(object):  # An object to trade-off between memory usage and lock granularity (speed)
+
+    def __init__(self, args, log, array_size, granularity):
+
+        self.log = log
+        self.args = args
+        self.array_size = array_size
+        self.granularity = granularity
+        self.lock_count = int(array_size / granularity) + 1
+        numpy_shape = (self.lock_count,)
+        self.lock_array = np.empty(numpy_shape, dtype=object)  # create the lock numpy array
+        for idx in range(self.lock_count):
+            self.lock_array[idx] = multiprocessing.Lock()
+
+    def acquire(self, array_index):
+
+        idx = int(array_index/self.granularity)
+        self.lock_array[idx].acquire()
+
+    def release(self, array_index):
+
+        idx = int(array_index/self.granularity)
+        self.lock_array[idx].release()
+
 
 
 class GenomeEvidence(object):
@@ -99,7 +121,7 @@ class GenomeEvidence(object):
                                    , Contigfixedarray=evidence_fixed_array
                                    , Contiginsertarray=evidence_insert_array
                                    , Contiginsertlist=[]
-                                   , Contiglocks=None)
+                                   , Contiglocks=GranularityLock(self.args, self.log, seq_length, self.args.lockGranularity))
 
     def get_shared_numpy(self, numpy_shape):  # The fixed evidence array is shared between processes
 
@@ -116,12 +138,11 @@ class GenomeEvidence(object):
         sam_record_queue = multiprocessing.Queue(self.queue_max_size)
         insert_record_queue = manager.Queue()
         counter_lock = multiprocessing.Lock()
-        memory_lock = multiprocessing.Lock()
         # start the SAM analysis processes.
         consumer_processes = []
         for _ in range(self.args.processCount): # start the SAM record consumer processes
             process = multiprocessing.Process(target=self.consume_sam_records
-                                        , args=(sam_record_queue, insert_record_queue, counter_lock, memory_lock))
+                                              , args=(sam_record_queue, insert_record_queue, counter_lock))
             process.daemon = True
             process.start()  # process SAM records.
             consumer_processes.append(process)
@@ -185,7 +206,7 @@ class GenomeEvidence(object):
             self.log.error("Problem processing SAM file: %s - check the file name and directory", sam_file_name)
             sys.exit()
 
-    def consume_sam_records(self, sam_record_queue, insert_record_queue, counter_lock, memory_lock):
+    def consume_sam_records(self, sam_record_queue, insert_record_queue, counter_lock):
 
         report_increment = 100000
 
@@ -209,7 +230,7 @@ class GenomeEvidence(object):
             req_sam_fields += opt_sam_fields  # should now be 12 fields, opt may be []
             sam_record = self.SamRecord(*req_sam_fields)
 
-            self.process_sam_record(sam_record, memory_lock)
+            self.process_sam_record(sam_record)
 
             with counter_lock:
                 self.line_counter.value += 1
@@ -220,7 +241,7 @@ class GenomeEvidence(object):
 
         self.queue_insert_records(insert_record_queue)   # inserted nucleotides are processed in the mainline process.
 
-    def process_sam_record(self, sam_record, memory_lock):
+    def process_sam_record(self, sam_record):
 
         cigar_list = self.decode_cigar(sam_record.Cigar)  # returns a list of cigar tuples (Code, Count)
         current_position = int(sam_record.Pos) - 1     # Adjust for the 1 offset convention in sam files.
@@ -238,6 +259,8 @@ class GenomeEvidence(object):
         evidence_fixed_array = contig_evidence.Contigfixedarray
         evidence_insert_list = contig_evidence.Contiginsertlist
         reference_sequence = contig_evidence.Contigrecord.seq
+        granularity_locks = contig_evidence.Contiglocks
+
         sam_idx = 0
 
         for cigar in cigar_list:
@@ -253,14 +276,15 @@ class GenomeEvidence(object):
                 for idx in range(cigar.Count):
 
                     sam_nucleotide = sam_record.Sequence[sam_idx + idx]
-                    ref_nucleotide = reference_sequence[current_position + idx]
+                    seq_index = current_position + idx
+                    ref_nucleotide = reference_sequence[seq_index]
 
                     if sam_nucleotide in GenomeEvidence.nucleotide_offset:
                         offset = GenomeEvidence.nucleotide_offset[sam_nucleotide]
-# Shared memory should be protected with a lock - however this substantially increases runtime
-#                        memory_lock.acquire()
-                        evidence_fixed_array[current_position + idx][offset] += 1
-#                        memory_lock.release()
+                        # Shared memory is protected with a granularity lock
+                        granularity_locks.acquire(seq_index)
+                        evidence_fixed_array[seq_index][offset] += 1
+                        granularity_locks.release(seq_index)
 
                         if sam_nucleotide != ref_nucleotide:
                             mismatch += 1
@@ -273,11 +297,10 @@ class GenomeEvidence(object):
 
                 offset = GenomeEvidence.nucleotide_offset["-"]
                 for idx in range(cigar.Count):
-
-# Shared memory should be protected with a lock - however this substantially increases runtime
-#                    memory_lock.acquire()
+                    # Shared memory is protected with a granularity lock
+                    granularity_locks.acquire(seq_index)
                     evidence_fixed_array[current_position + idx][offset] += 1
-#                    memory_lock.release()
+                    granularity_locks.release(seq_index)
 
                 self.deletion.value += 1
                 current_position += cigar.Count

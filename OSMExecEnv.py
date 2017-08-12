@@ -137,7 +137,7 @@ class ExecEnv(object):
         parser.add_argument("--queuesize", dest="queueSize", default=1000000,
                             help=("The maximum number of SAM records held in the inter-process record queue"))
 
-        parser.add_argument("--lockgranularity", dest="lockGranularity", default=10000,
+        parser.add_argument("--lockgranularity", dest="lockGranularity", default=1000,
                             help=("The number of nucleotide positions per inter-process write lock (less is faster)"))
 
         # --version
