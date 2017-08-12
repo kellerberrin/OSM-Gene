@@ -134,6 +134,12 @@ class ExecEnv(object):
         parser.add_argument("--processes", dest="processCount", default=4,
                             help=("The number of CPU processes (not threads!) assigned to processing SAM genome data"))
 
+        parser.add_argument("--queuesize", dest="queueSize", default=1000000,
+                            help=("The maximum number of SAM records held in the inter-process record queue"))
+
+        parser.add_argument("--lockgranularity", dest="lockGranularity", default=10000,
+                            help=("The number of nucleotide positions per inter-process write lock (less is faster)"))
+
         # --version
         parser.add_argument("--version", action="version", version=__version__)
 

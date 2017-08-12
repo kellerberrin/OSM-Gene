@@ -130,7 +130,7 @@ class GeneAnalysis(object):
     def print_gene_stats(self, gene, contig_evidence):
 
         fixed = contig_evidence.Contigfixedarray
-        insert = contig_evidence.Contifinsertarray
+        insert = contig_evidence.Contiginsertarray
         contig = contig_evidence.Contigrecord
         mutant_seq = contig.seq
         mutant_seq_lower = mutant_seq.lower()
@@ -171,12 +171,12 @@ class GeneAnalysis(object):
                     mutant_seq = self.mutant_dna_sequence(gene, mutant_seq, count_list, idx)
                     mutant_seq_lower = self.mutant_dna_sequence(gene, mutant_seq_lower, count_list, idx)
                     if False:
-                        self.log.info("*** Region, %s, Gene, %s CDS, %s, Idx, %d,"
-                                      , contig.id, description, cds.id, idx)
+                        self.log.info("*** Region, %s, Gene, %s, %s, Idx, %d,"
+                                      , contig.id, gene.id, description, idx)
                         self.log.info("*** Ref, %s, 'A', %d, 'C', %d, 'G', %d, 'T', %d, '-', %d, insert, %d"
                                       , nucleotide, A_count, C_count, G_count, T_count, Delete_count, Insert_count)
 
-        if gene_SNP_mutations > 0:
+        if gene_SNP_mutations > 0 and False:
             mutant_protein = gene.extract(mutant_seq).translate()
             original_protein = gene.extract(contig.seq).translate()
             self.log.info("SNP, %d, Region, %s, Gene, %s, Function, %s"

@@ -315,7 +315,7 @@ def read_gff(gff_file_handle, reference_sequences):
     print("about to type gf_model")
     print("++++++ Return Called ++++++", type(gff_model), len(gff_model))
 
-    for key, value in gff_model.iteritems(): # +++++++++
+    for key, value in gff_model.items(): # +++++++++
         print ("gff_model_key:", key, "value type length", type(value), len(value))
 
     return gff_model
@@ -687,17 +687,17 @@ class GffAdapter(object):
         max_error_count = 200
         compare_result = True
 
-        for key, value in dict_a.iteritems():
+        for key, value in dict_a.items():
             if key not in dict_b:
                 self.log.error("Chromosome key: %s in dict_a not in dict_b", key)
                 sys.exit()
 
-        for key, value in dict_b.iteritems():
+        for key, value in dict_b.items():
             if key not in dict_a:
                 self.log.error("Chromosome key: %s in dict_b is not in dict_a", key)
                 sys.exit()
 
-        for key, value in dict_a.iteritems():
+        for key, value in dict_a.items():
 
             list_a = value  # extract a list of features from the dictionary.
             list_b = dict_b[key]
