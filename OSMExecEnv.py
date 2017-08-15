@@ -28,6 +28,7 @@ import os
 import sys
 import argparse
 import logging
+import multiprocessing
 
 __version__ = "0.1"
 
@@ -131,8 +132,9 @@ class ExecEnv(object):
                             help=("The minimum SAM/BAM count of a single nucleotide analyzed in the Parent (wild-type) "
                                   "genome that is to be compared to the Mutant genome"))
 
-        parser.add_argument("--processes", dest="processCount", default=4,
-                            help=("The number of CPU processes (not threads!) assigned to processing SAM genome data"))
+        parser.add_argument("--processes", dest="processCount", default=-1,
+                            help=("The number of CPU processes (not threads!) assigned to processing SAM genome data."
+                                  " Defaults to the number of (CPU processors available)."))
 
         parser.add_argument("--queuesize", dest="queueSize", default=1000000,
                             help=("The maximum number of SAM records held in the inter-process record queue"))
@@ -184,6 +186,13 @@ class ExecEnv(object):
         ExecEnv.args.fastaFile = os.path.join(ExecEnv.args.workDirectory, ExecEnv.args.fastaFile)
         ExecEnv.args.parentFile = os.path.join(ExecEnv.args.workDirectory, ExecEnv.args.parentFile)
         ExecEnv.args.mutantFile = os.path.join(ExecEnv.args.workDirectory, ExecEnv.args.mutantFile)
+
+        # Default the SAM read processes to the number of CPUs available
+        if ExecEnv.args.processCount < 1:
+            ExecEnv.args.processCount = multiprocessing.cpu_count()
+            if ExecEnv.args.processCount < 1:
+                ExecEnv.args.processCount = 1
+
 
 ################# Create Comparison Instance ########################################################
 

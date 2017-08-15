@@ -24,7 +24,9 @@
 from __future__ import print_function,  division
 
 from OSMGFFParser import ParseGFFSeq
+from OSMGeneEvidence import ReadSamFile, GenomeEvidence
 from OSMGeneAnalysis import GeneAnalysis
+from OSM_Filter import GenomeSNPFilter
 
 # ==============================================================================#
 
@@ -38,8 +40,17 @@ class OSMGenomeComparison(object):
 
     def comparison(self):
 
-        parsed_gff = ParseGFFSeq(self.args, self.log).parsed_structure
-#        parent_gene_analysis = GeneAnalysis(self.args, self.log, parsed_gff, self.args.parentFile)
-#        parent_gene_analysis.print_contig_stats()
-        mutant_gene_analysis = GeneAnalysis(self.args, self.log, parsed_gff, self.args.mutantFile)
-        mutant_gene_analysis.print_contig_stats()
+        parsed_gff = ParseGFFSeq(self.log, self.args.fastaFile, self.args.gffFile).get_parsed_structure()
+
+        mutant_evidence = ReadSamFile( self.log
+                                      , parsed_gff
+                                      , self.args.queueSize
+                                      , self.args.lockGranularity
+                                      , self.args.processCount
+                                      , self.args.mutantFile).get_evidence_object()
+
+        snp_filter = GenomeSNPFilter(self.log, mutant_evidence, self.args.minMutantCount, self.args.minMutantProportion)
+        snp_filter.filter_gene_snp()
+        snp_filter.filter_cds_snp()
+
+#        GeneAnalysis(self.log, mutant_evidence).print_contig_stats()

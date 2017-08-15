@@ -26,100 +26,34 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 from collections import namedtuple
-
 from OSMGeneEvidence import GenomeEvidence
 
 
-class GeneDictionary(object):
 
-    def __init__(self, args, log, genome_gff):
-        # Shallow copies of the runtime environment.
-        self.log = log
-        self.args = args
-        self.ContigRecord = namedtuple("ContigRecord", "Contig Genedict Genelist CDSlist")
-        self.contig_dict = self.genome_contig_dict(genome_gff)
 
-    def genome_contig_dict(self, genome_gff):
-
-        contig_dict = {}
-        for contig_seqrecord in genome_gff:
-
-            gene_dict = self.get_gene_dict(contig_seqrecord)  # lookup using gene id.
-            gene_list = self.sorted_gene_list(contig_seqrecord)  # sorted by increasing contig sequence position
-            CDS_list = self.sorted_CDS_list(contig_seqrecord)  # sorted by increasing contig sequence position
-
-            contig_dict[contig_seqrecord.id] = self.ContigRecord(*[contig_seqrecord, gene_dict, gene_list, CDS_list])
-
-        return contig_dict
-
-    def get_gene_dict(self,  contig_seqrecord):
-
-        gene_dict = {}
-        for gene in contig_seqrecord.features:  # process all the features in a biopython seqrecord contig object.
-            gene_dict[gene.id] = gene
-
-        return gene_dict
-
-    def sorted_gene_list(self, contig_seqrecord):
-
-        gene_list = []
-        for gene in contig_seqrecord.features:
-            gene_list.append(gene)
-
-        return sorted(gene_list, key=lambda g: g.location.start)
-
-    def sorted_CDS_list(self, contig_seqrecord):
-
-        CDS_list = []
-        for gene in contig_seqrecord.features:
-            CDS_list = CDS_list + self.get_CDS_list(gene.sub_features)
-
-        return sorted(CDS_list, key=lambda cds: cds.location.start)
-
-    @staticmethod
-    def get_CDS_list(sub_feature_list):  # recursively descend the feature tree and create a list of CDS features.
-
-        CDS_list = []
-
-        if sub_feature_list is not None:
-
-            for sub_feature in sub_feature_list:
-
-                if sub_feature.type == "CDS":
-
-                    CDS_list.append(sub_feature)
-
-                CDS_list = CDS_list + GeneDictionary.get_CDS_list(sub_feature.sub_features)
-
-        return CDS_list
-
-    def print_contig_dict(self):
-
-        for contigkey, contigvalue in self.contig_dict.items():
-            print("\n******* Contig:", contigvalue.Contig)
-            for gene in contigvalue.CDSlist:
-                print("\n%%% CDS:", gene)
+##############################################################################################
+#
+#   Compares the genome evidence to the fasta sequence or other genome evidence objects
+#
+##############################################################################################
 
 
 class GeneAnalysis(object):
 
-    def __init__(self, args, log, genome_gff, sam_file_name):
+    def __init__(self, log, genome_evidence):
         # Shallow copies of the runtime environment.
         self.log = log
-        self.args = args
-        self.gene_dictionary = GeneDictionary(self.args, self.log, genome_gff)
-        self.gene_evidence = GenomeEvidence(self.args, self.log, genome_gff)
-        self.gene_evidence.read_mp_sam_file(sam_file_name)
+        self.gene_dictionary = GeneDictionary(genome_evidence).get_gene_dictionary()
+        self.genome_evidence = genome_evidence
         self.count_threshold = 20
 
     def print_contig_stats(self):
 
         total_SNP_mutations = 0
-        for contig_id, contig_record in self.gene_dictionary.contig_dict.items():
-            contig_evidence = self.gene_evidence.get_contig_evidence(contig_id)
+        for contig_id, contig_evidence in self.genome_evidence.get_genome_evidence().items():
             contig_SNP_mutations = 0
 
-            for gene in contig_record.Genelist:
+            for gene in self.gene_dictionary[contig_id].Genelist:
                 contig_SNP_mutations += self.print_gene_stats(gene, contig_evidence)
 
             self.log.info("********** Contig, %s, SNP, %d, *********", contig_id, contig_SNP_mutations)
@@ -170,11 +104,15 @@ class GeneAnalysis(object):
                     gene_SNP_mutations += 1
                     mutant_seq = self.mutant_dna_sequence(gene, mutant_seq, count_list, idx)
                     mutant_seq_lower = self.mutant_dna_sequence(gene, mutant_seq_lower, count_list, idx)
-                    if False:
+                    if True:
                         self.log.info("*** Region, %s, Gene, %s, %s, Idx, %d,"
                                       , contig.id, gene.id, description, idx)
                         self.log.info("*** Ref, %s, 'A', %d, 'C', %d, 'G', %d, 'T', %d, '-', %d, insert, %d"
                                       , nucleotide, A_count, C_count, G_count, T_count, Delete_count, Insert_count)
+                        if Insert_count == max(count_list):
+                            self.log.info("%Insert %%%%%%%%%%")
+                        if Delete_count == max(count_list):
+                            self.log.info("%Delete %%%%%%%%%%")
 
         if gene_SNP_mutations > 0 and False:
             mutant_protein = gene.extract(mutant_seq).translate()

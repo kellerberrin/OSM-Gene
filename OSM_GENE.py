@@ -25,7 +25,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import time
-import cProfile
 
 # Import the runtime environment object.
 from OSMExecEnv import ExecEnv, __version__

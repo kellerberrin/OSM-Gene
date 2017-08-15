@@ -33,17 +33,43 @@ from collections import namedtuple
 import re
 import sys
 
-# Collect the SAM file reads .
+##############################################################################################
+# Object to return the SAM file read evidence.
 # Nucleotide counts and deletions go into an unsigned integer numpy area the same size as the contig. region sequence.
 # Insertions are entered into a numpy array of objects initially set to None. Insertions are added at the
 # appropriate sequence index as dictionaries indexed by inserted sequence with count as value.
+##############################################################################################
 
-class GranularityLock(object):  # An object to trade-off between memory usage and lock granularity (speed)
 
-    def __init__(self, args, log, array_size, granularity):
+class GenomeEvidence(object):
 
-        self.log = log
-        self.args = args
+    nucleotide_offset = {"A": 0, "C": 1, "G": 2, "T": 3, "U": 3, "-": 4}
+
+    def __init__(self, evidence_dictionary):
+
+        evidence_fields = "Contigrecord Contigfixedarray Contiginsertarray"
+        self.EvidenceFields = namedtuple("EvidenceFields", evidence_fields)
+        self.genome_evidence = {}
+
+        for contig_id, contig_evidence in evidence_dictionary.items():
+            self.genome_evidence[contig_id] = self.EvidenceFields( Contigrecord=contig_evidence.Contigrecord
+                                                                 , Contigfixedarray=contig_evidence.Contigfixedarray
+                                                                 , Contiginsertarray=contig_evidence.Contiginsertarray)
+
+    def get_genome_evidence(self):
+        return self.genome_evidence
+
+##############################################################################################
+#
+#   A private object to trade-off between memory usage and lock granularity (speed)
+#
+##############################################################################################
+
+
+class GranularityLock(object):
+
+    def __init__(self, array_size, granularity):
+
         self.array_size = array_size
         self.granularity = granularity
         self.lock_count = int(array_size / granularity) + 1
@@ -53,65 +79,114 @@ class GranularityLock(object):  # An object to trade-off between memory usage an
             self.lock_array[idx] = multiprocessing.Lock()
 
     def acquire(self, array_index):
-
         idx = int(array_index/self.granularity)
         self.lock_array[idx].acquire()
 
     def release(self, array_index):
-
         idx = int(array_index/self.granularity)
         self.lock_array[idx].release()
 
+##############################################################################################
+#
+#   Processes SAM files using multiple processes for maximum speed
+#
+##############################################################################################
 
 
-class GenomeEvidence(object):
+class ReadSamFile(object):
 
-    nucleotide_offset = {"A": 0, "C": 1, "G": 2, "T": 3, "U": 3, "-": 4}
-
-    def __init__(self, args, log, genome_gff):
+    def __init__(self, log, genome_gff, io_queue_size=1000000, lock_granularity=1000, processes=1, sam_filename=""):
         # Shallow copies of the runtime environment.
         self.log = log
-        self.args = args
         self.genome = genome_gff
+        self.lock_granularity = lock_granularity
+        self.io_queue_size = io_queue_size
+        # Constants and named tuple definitions
         sam_fields = "Qname Flag Rname Pos Mapquality Cigar Rnext Pnext Tlen Sequence Quality Optflags"
         self.SamRecord = namedtuple("SamRecord", sam_fields)
         self.cigar_regex = re.compile("([0-9]+[MIDNSHP=X])")
         self.CigarItem = namedtuple("CigarItem", "Code Count")
-        self.queue_max_size = self.args.queueSize
-        self.verbose = False
         evidence_fields = "Contigrecord Contigfixedarray Contiginsertarray Contiginsertlist Contiglocks"
         self.EvidenceFields = namedtuple("EvidenceFields", evidence_fields)
-        self.eof_flag = -1
         self.InsertTuple = namedtuple("InsertTuple", "Contigid Sequenceidx Insertseq")
+        self.eof_flag = -1
+        self.report_increment = 100000
         # The variables below are shared between processes
-        self.genome_evidence = self.genome_evidence(genome_gff)  # dict of numpy nucleotide evidence arrays
+        self.genome_evidence = self.__genome_evidence(genome_gff)  # dict of numpy nucleotide evidence arrays
         self.line_counter = multiprocessing.Value('i', 0)
         self.insertion = multiprocessing.Value('i', 0)
         self.deletion = multiprocessing.Value('i', 0)
         self.unmapped_read = multiprocessing.Value('i', 0)
         self.nucleotide_mismatch = multiprocessing.Value('i', 0)
         self.eof = multiprocessing.Value(c_bool, False)
+        # Read the SAM file
+        self.__evidence_from_sam_file(sam_filename, processes)
+
+    ##############################################################################################
+    #
+    #   Public class members
+    #
+    ##############################################################################################
+
+    def get_evidence_object(self):
+        return GenomeEvidence(self.genome_evidence)
+
+    ##############################################################################################
+    #
+    #   Private class members
+    #
+    ##############################################################################################
 
 
-    def get_contig_evidence(self, contig_id):
+    def __evidence_from_sam_file(self, sam_filename, processes):
 
-        return self.genome_evidence[contig_id]
+        self.__read_mp_sam_file(sam_filename, processes)
 
-    def genome_evidence(self, genome_gff):
+        self.log.info("****Completed Processing: %d reads; Unmapped: %d, Insert: %d; Delete: %d; Mismatch: %d"
+                      , self.line_counter.value, self.unmapped_read.value, self.insertion.value
+                      , self.deletion.value, self.nucleotide_mismatch.value)
+
+    def __read_mp_sam_file(self, sam_file_name, child_processes):
+
+        manager = multiprocessing.Manager()
+        sam_record_queue = multiprocessing.Queue(self.io_queue_size)
+        insert_record_queue = manager.Queue()
+        counter_lock = multiprocessing.Lock()
+        # start the SAM analysis processes.
+        consumer_processes = []
+        for _ in range(child_processes): # start the SAM record consumer processes
+            process = multiprocessing.Process(target=self.__consume_sam_records
+                                              , args=(sam_record_queue, insert_record_queue, counter_lock))
+            process.daemon = True
+            process.start()  # process SAM records.
+            consumer_processes.append(process)
+
+        self.log.info("Started: %d SAM record analysis processes", child_processes)
+
+        # produce records for the consumer processes
+        self.__read_sam_file(sam_file_name, sam_record_queue, child_processes)
+
+        for idx in range(len(consumer_processes)):
+            consumer_processes[idx].join()  # wait for the consumer processes to complete
+
+        # Unpack the insert queue
+        self.__process_insert_queue(insert_record_queue)
+
+    def __genome_evidence(self, genome_gff):
 
         genome_evidence = {}
 
         for contig_seqrecord in genome_gff:
-            genome_evidence[contig_seqrecord.id] = self.make_evidence_array(contig_seqrecord)
+            genome_evidence[contig_seqrecord.id] = self.__make_evidence_array(contig_seqrecord)
 
         return genome_evidence
 
-    def make_evidence_array(self, contig_seqrecord):
+    def __make_evidence_array(self, contig_seqrecord):
 
         nucleotides = 5  # for each numpy array element allocate storage for (in order} 'A', 'C', 'G', 'T' ('U'), '-'
         seq_length = len(contig_seqrecord.seq)
         numpy_shape = (seq_length, nucleotides)
-        evidence_fixed_array = self.get_shared_numpy(numpy_shape)  # create the fixed numpy array
+        evidence_fixed_array = self.__get_shared_numpy(numpy_shape)  # create the fixed numpy array
         numpy_shape = (seq_length,)
         evidence_insert_array = np.empty(numpy_shape, dtype=object)  # create the insert numpy array
 
@@ -121,9 +196,9 @@ class GenomeEvidence(object):
                                    , Contigfixedarray=evidence_fixed_array
                                    , Contiginsertarray=evidence_insert_array
                                    , Contiginsertlist=[]
-                                   , Contiglocks=GranularityLock(self.args, self.log, seq_length, self.args.lockGranularity))
+                                   , Contiglocks=GranularityLock(seq_length, self.lock_granularity))
 
-    def get_shared_numpy(self, numpy_shape):  # The fixed evidence array is shared between processes
+    def __get_shared_numpy(self, numpy_shape):  # The fixed evidence array is shared between processes
 
         shared_array = RawArray(c_uint32, (numpy_shape[0] * numpy_shape[1]))
         dt = np.dtype("uint32")
@@ -132,36 +207,7 @@ class GenomeEvidence(object):
 
         return shared_np
 
-    def read_mp_sam_file(self, sam_file_name):
-
-        manager = multiprocessing.Manager()
-        sam_record_queue = multiprocessing.Queue(self.queue_max_size)
-        insert_record_queue = manager.Queue()
-        counter_lock = multiprocessing.Lock()
-        # start the SAM analysis processes.
-        consumer_processes = []
-        for _ in range(self.args.processCount): # start the SAM record consumer processes
-            process = multiprocessing.Process(target=self.consume_sam_records
-                                              , args=(sam_record_queue, insert_record_queue, counter_lock))
-            process.daemon = True
-            process.start()  # process SAM records.
-            consumer_processes.append(process)
-
-        self.log.info("Started: %d SAM record analysis processes", self.args.processCount)
-
-        self.read_sam_file(sam_file_name, sam_record_queue)  # produce records for the consumer processes
-
-        for idx in range(len(consumer_processes)):
-            consumer_processes[idx].join()  # wait for the consumer processes to complete
-
-        # Unpack the insert queue
-        self.process_insert_queue(insert_record_queue)
-
-        self.log.info("****Completed Processing: %d reads; Unmapped: %d, Insert: %d; Delete: %d; Mismatch: %d"
-                      , self.line_counter.value, self.unmapped_read.value, self.insertion.value
-                      , self.deletion.value, self.nucleotide_mismatch.value)
-
-    def process_insert_queue(self, insert_record_queue):
+    def __process_insert_queue(self, insert_record_queue):
 
 #        insert_record_queue.put(self.eof_flag)  # insert an eof marker at the back of the queue
         insert_record_counter = 0
@@ -184,7 +230,7 @@ class GenomeEvidence(object):
 
         self.log.info("Processed: %d inserted nucloetide sequences", insert_record_counter)
 
-    def read_sam_file(self, sam_file_name, sam_record_queue):
+    def __read_sam_file(self, sam_file_name, sam_record_queue, process_count):
 
         self.log.info("Processing SAM file: %s", sam_file_name)
 
@@ -196,19 +242,17 @@ class GenomeEvidence(object):
 
                     sam_record_queue.put(sam_line)
 
-            for _ in range(self.args.processCount):
+            for _ in range(process_count):
                 sam_record_queue.put(self.eof_flag)
 
         except IOError:
 
-            for _ in range(self.args.processCount):
+            for _ in range(process_count):
                 sam_record_queue.put(self.eof_flag)
             self.log.error("Problem processing SAM file: %s - check the file name and directory", sam_file_name)
             sys.exit()
 
-    def consume_sam_records(self, sam_record_queue, insert_record_queue, counter_lock):
-
-        report_increment = 100000
+    def __consume_sam_records(self, sam_record_queue, insert_record_queue, counter_lock):
 
         while not self.eof.value:
 
@@ -230,20 +274,20 @@ class GenomeEvidence(object):
             req_sam_fields += opt_sam_fields  # should now be 12 fields, opt may be []
             sam_record = self.SamRecord(*req_sam_fields)
 
-            self.process_sam_record(sam_record)
+            self.__process_sam_record(sam_record)
 
             with counter_lock:
                 self.line_counter.value += 1
-                if self.line_counter.value % report_increment == 0:
+                if self.line_counter.value % self.report_increment == 0:
                     self.log.info("Processed: %d reads; Unmapped: %d, Insert: %d; Delete: %d; Mismatch: %d"
-                                    , self.line_counter.value, self.unmapped_read.value, self.insertion.value
-                                    , self.deletion.value, self.nucleotide_mismatch.value)
+                                  , self.line_counter.value, self.unmapped_read.value, self.insertion.value
+                                  , self.deletion.value, self.nucleotide_mismatch.value)
 
-        self.queue_insert_records(insert_record_queue)   # inserted nucleotides are processed in the mainline process.
+        self.__queue_insert_records(insert_record_queue)   # inserted nucleotides are processed in the mainline process.
 
-    def process_sam_record(self, sam_record):
+    def __process_sam_record(self, sam_record):
 
-        cigar_list = self.decode_cigar(sam_record.Cigar)  # returns a list of cigar tuples (Code, Count)
+        cigar_list = self.__decode_cigar(sam_record.Cigar)  # returns a list of cigar tuples (Code, Count)
         current_position = int(sam_record.Pos) - 1     # Adjust for the 1 offset convention in sam files.
 
         if sam_record.Rname == "*":
@@ -321,7 +365,7 @@ class GenomeEvidence(object):
 
         return
 
-    def decode_cigar(self, cigar):
+    def __decode_cigar(self, cigar):
 
         cigar_list = []
         for cigar_item in re.findall(self.cigar_regex, cigar):
@@ -331,7 +375,7 @@ class GenomeEvidence(object):
 
         return cigar_list
 
-    def queue_insert_records(self, insert_record_queue):
+    def __queue_insert_records(self, insert_record_queue):
 
         for contig_id, contig_evidence in self.genome_evidence.items():
 
