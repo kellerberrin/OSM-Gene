@@ -63,6 +63,22 @@ class OSMGenomeComparison(object):
 
         mutant_cds_snp = mutant_gene_snp.filter_cds_snp()
 
+        parent_evidence = ReadSamFile( self.log
+                                      , parsed_gff
+                                      , self.args.queueSize
+                                      , self.args.lockGranularity
+                                      , self.args.processCount
+                                      , self.args.parentFile).get_evidence_object()
+
+        parent_all_snp = parent_evidence.get_all_snp(self.args.minParentCount, self.args.minParentProportion)
+
+        union_snp = parent_all_snp.union(mutant_all_snp)
+
+        intersection_snp = parent_all_snp.intersection(mutant_all_snp)
+
+        difference_snp = parent_all_snp.difference(mutant_all_snp)
+
+        symmetric_difference = parent_all_snp.symmetric_difference(mutant_all_snp)
 
 # ===================================================================================================
 # The program mainline.

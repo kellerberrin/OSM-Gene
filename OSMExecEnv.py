@@ -104,38 +104,36 @@ class ExecEnv(object):
                             help='Flush an existing log file (file name argument optional, default "OSM_GENE.log").'
                                  'The log file always resides in the work directory.')
 
-        # "minimum_variant_counts" in Jeremy Horst's code
+        # "minimum_variant_SAM read count" in Jeremy Horst's code
         parser.add_argument("--mutantcount", dest="minMutantCount", default=20,
                             help=("The minimum SAM/BAM coverage for the a single nucleotide analyzed in the Mutant"
                                   " genome."))
 
-        # "minimum_variant_proportion" in Jeremy Horst's code
+        # "minimum_variant_snp proportion" in Jeremy Horst's code
         parser.add_argument("--mutantprop", dest="minMutantProportion", default=0.7,
-                            help=("The min proportion of a single nucleotide analyzed in the Mutant genome that is at "
-                                  " variance from the parent (wild-type) genome"))
+                            help=("The minimum proportion of a single nucleotide analyzed in the Mutant genome that is"
+                                  " at variance from the reference (fasta) genome"))
 
-        # "maximum_wildtype_proportion" in Jeremy Horst's code
-        parser.add_argument("--maxparentprop", dest="maxParentProportion", default=0.1,
-                            help=("The max proportion of a single nucleotide analyzed in the Parent (wild-type) genome"
-                                  "that is at variance from the reference (fasta) genome"))
-
-        # "maximum_wildtype_variant_counts" in Jeremy Horst's code
-        parser.add_argument("--maxparentcount", dest="maxParentCount", default=20,
-                            help=("The maximum SAM/BAM count of a single nucleotide analyzed in the Parent (wild-type)"
+        # "minimum_wildtype_SAM read count" in Jeremy Horst's code
+        parser.add_argument("--parentcount", dest="minParentCount", default=20,
+                            help=("The minimum SAM/BAM count of a single nucleotide analyzed in the Parent (wild-type)"
                                   " genome that is at variance from the reference (fasta) genome"))
 
-        # "minimum_wildtype_total_counts" in Jeremy Horst's code
-        parser.add_argument("--minparentcount", dest="minParentCount", default=10,
-                            help=("The minimum SAM/BAM count of a single nucleotide analyzed in the Parent (wild-type) "
-                                  "genome that is to be compared to the Mutant genome"))
+        # "minimum_wildtype_snp proportion" in Jeremy Horst's code
+        parser.add_argument("--parentprop", dest="minParentProportion", default=0.7,
+                            help=("The minimum proportion of a single nucleotide analyzed in the Parent (wild-type)"
+                                  " genome that is at variance from the reference (fasta) genome"))
 
+        # Specific to the SAM file read object (ReadSamFile)
         parser.add_argument("--processes", dest="processCount", default=-1,
                             help=("The number of CPU processes (not threads!) assigned to processing SAM genome data."
                                   " Defaults to the number of (CPU processors available)."))
 
+        # Specific to the SAM file read object (ReadSamFile)
         parser.add_argument("--queuesize", dest="queueSize", default=1000000,
                             help=("The maximum number of SAM records held in the inter-process record queue"))
 
+        # Specific to the SAM file read object (ReadSamFile)
         parser.add_argument("--lockgranularity", dest="lockGranularity", default=1000,
                             help=("The number of nucleotide positions per inter-process write lock (less is faster)"))
 

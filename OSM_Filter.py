@@ -24,6 +24,7 @@
 #
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import sys
 from collections import namedtuple
 import bisect
 
@@ -218,3 +219,70 @@ class SNPAnalysis(object):
                                                             , SNPlist=cds_snp_list)
 
         return SNPAnalysis(self.log, self.genome_evidence,snp_evidence)
+
+    def union(self, snp_analysis):
+        snp_evidence = {}
+        for contig_id, contig_snp in self.snp_evidence.items():
+
+            if contig_id not in snp_analysis.snp_evidence:
+                self.log.error("SNP union; contig region: %s not found in both snp evidence objects", contig_id)
+                sys.exit()
+
+            s_snp = set(contig_snp.SNPlist)
+            t_snp = set(snp_analysis.snp_evidence[contig_id].SNPlist)
+            result_snp_list = list(s_snp.union(t_snp))
+            snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
+                                                            , SNPlist=result_snp_list)
+
+        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence)
+
+    def intersection(self, snp_analysis):
+
+        snp_evidence = {}
+        for contig_id, contig_snp in self.snp_evidence.items():
+
+            if contig_id not in snp_analysis.snp_evidence:
+                self.log.error("SNP union; contig region: %s not found in both snp evidence objects", contig_id)
+                sys.exit()
+
+            s_snp = set(contig_snp.SNPlist)
+            t_snp = set(snp_analysis.snp_evidence[contig_id].SNPlist)
+            result_snp_list = list(s_snp.intersection(t_snp))
+            snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
+                                                            , SNPlist=result_snp_list)
+
+        return SNPAnalysis(self.log, self.genome_evidence, snp_evidence)
+
+    def difference(self, snp_analysis):
+
+        snp_evidence = {}
+        for contig_id, contig_snp in self.snp_evidence.items():
+
+            if contig_id not in snp_analysis.snp_evidence:
+                self.log.error("SNP union; contig region: %s not found in both snp evidence objects", contig_id)
+                sys.exit()
+
+            s_snp = set(contig_snp.SNPlist)
+            t_snp = set(snp_analysis.snp_evidence[contig_id].SNPlist)
+            result_snp_list = list(s_snp.difference(t_snp))
+            snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
+                                                            , SNPlist=result_snp_list)
+
+        return SNPAnalysis(self.log, self.genome_evidence, snp_evidence)
+
+    def symmetric_difference(self, snp_analysis):
+
+        snp_evidence = {}
+        for contig_id, contig_snp in self.snp_evidence.items():
+
+            if contig_id not in snp_analysis.snp_evidence:
+                self.log.error("SNP union; contig region: %s not found in both snp evidence objects", contig_id)
+                sys.exit()
+
+            s_snp = set(contig_snp.SNPlist)
+            t_snp = set(snp_analysis.snp_evidence[contig_id].SNPlist)
+            result_snp_list = list(s_snp.symmetric_difference(t_snp))
+            snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
+                                                            , SNPlist=result_snp_list)
+
+        return SNPAnalysis(self.log, self.genome_evidence, snp_evidence)
