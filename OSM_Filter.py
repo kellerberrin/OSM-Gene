@@ -26,24 +26,23 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 from collections import namedtuple
 import bisect
-import sys
-
-from OSMGeneEvidence import GenomeEvidence
 
 
 ##############################################################################################
 #
-#   A contig indexed dictionary of Genes and CDS locations sorted by increasing sequence.
+#   An auxiliary helper class to provide indexed look up on contiguous features.
+#   A contiguous indexed dictionary of Genes and CDS locations sorted by increasing sequence.
 #
 ##############################################################################################
 
 
 class GeneDictionary(object):
 
+    GeneDict = namedtuple("GeneDict", "Contigrecord Geneoffsets Genelist Cdsoffsets Cdslist")
+
     def __init__(self, genome_evidence):
 
-        self.GeneDict = namedtuple("GeneDict", "Contigrecord Geneoffsets Genelist Cdsoffsets Cdslist")
-        self.contig_dict = self.__genome_contig_dict(genome_evidence.get_genome_evidence())
+        self.contig_dict = self.__genome_contig_dict(genome_evidence)
 
     ##############################################################################################
     #
@@ -76,12 +75,11 @@ class GeneDictionary(object):
             cds_list = self.__sorted_cds_list(contig_record)  # sorted by increasing contig sequence position
             cds_offset_list = self.__get_feature_offsets(cds_list)  # sorted list of gene sequence index offsets.
 
-            contig_dict[contig_id] = self.GeneDict(Contigrecord=contig_record
-                                                    , Geneoffsets=gene_offset_list
-                                                    , Genelist=gene_list
-                                                    , Cdsoffsets=cds_offset_list
-                                                    , Cdslist=cds_list)
-
+            contig_dict[contig_id] = GeneDictionary.GeneDict(Contigrecord=contig_record
+                                                            , Geneoffsets=gene_offset_list
+                                                            , Genelist=gene_list
+                                                            , Cdsoffsets=cds_offset_list
+                                                            , Cdslist=cds_list)
         return contig_dict
 
 
@@ -165,70 +163,31 @@ class GeneDictionary(object):
 
 ##############################################################################################
 #
-#   Generates SNP evidence from the supplied genome_evidence.
+#   Manipulates SNP evidence.
 #
 ##############################################################################################
 
 
-class GenomeSNPFilter(object):
+class SNPAnalysis(object):
 
-    def __init__(self, log, genome_evidence, min_read_count=20, min_mutant_proportion=0.7):
+    SNPFields = namedtuple("SNPFields", "Contigrecord SNPlist")
+
+    def __init__(self, log, genome_evidence, snp_evidence):
 
         self.log = log
-        self.SNPFields = namedtuple("SNPFields", "Contigrecord SNPlist")
         self.genome_evidence = genome_evidence
-        self.gene_dictionary = GeneDictionary(genome_evidence)
-        self.snp_evidence = self.filter_count_proportion(min_read_count, min_mutant_proportion)
-
-    def get_snp_evidence(self):
-        return self.snp_evidence
-
-    def set_snp_evidence(self, snp_evidence):
         self.snp_evidence = snp_evidence
+        self.gene_dictionary = GeneDictionary(genome_evidence)
 
-    def filter_count_proportion(self, min_read_count, min_mutant_proportion):
-
-        self.log.info("Filtering: %d contiguous regions for SNP, minimum reads: %d, minimum mutant proportion: %f"
-                      , len(self.genome_evidence.get_genome_evidence()), min_read_count, min_mutant_proportion)
-
-        snp_evidence = {}
-        for contig_id, contig_evidence in self.genome_evidence.get_genome_evidence().items():
-
-            contig_snp_list = []
-            fixed = contig_evidence.Contigfixedarray
-            insert = contig_evidence.Contiginsertarray
-            contig = contig_evidence.Contigrecord
-
-            for idx in range(len(contig.seq)):
-
-                nucleotide = contig.seq[idx]
-                nucleotide_count = fixed[idx][GenomeEvidence.nucleotide_offset[nucleotide]]
-                a_count = fixed[idx][GenomeEvidence.nucleotide_offset["A"]]
-                c_count = fixed[idx][GenomeEvidence.nucleotide_offset["C"]]
-                g_count = fixed[idx][GenomeEvidence.nucleotide_offset["G"]]
-                t_count = fixed[idx][GenomeEvidence.nucleotide_offset["T"]]  # nucleotide 'T' and 'U'
-                delete_count = fixed[idx][GenomeEvidence.nucleotide_offset["-"]]
-                insert_count = 0 if insert[idx] is None else len(insert[idx])
-                count_list = [a_count, c_count, g_count, t_count, delete_count, insert_count]
-                sum_count_list = float(sum(count_list))
-                if sum_count_list > 0:
-                    proportion_mutant = 1.0 - (nucleotide_count / sum_count_list)
-                else:
-                    proportion_mutant = 0.0
-
-                if proportion_mutant >= min_mutant_proportion and sum_count_list >= min_read_count:
-                    contig_snp_list.append(idx)
-
-            snp_evidence[contig.id] = self.SNPFields(Contigrecord=contig, SNPlist=contig_snp_list)
-            self.log.info("Contig: %s has %d raw SNP locations", contig.id, len(contig_snp_list))
-
-        return snp_evidence
+    ##############################################################################################
+    #
+    #   Public class members
+    #
+    ##############################################################################################
 
     def filter_gene_snp(self):
 
-        self.log.info("Filtering: %d contiguous regions for SNP within gene boundaries"
-                      , len(self.genome_evidence.get_genome_evidence()))
-
+        self.log.info("Filtering: %d contiguous regions for SNP within gene boundaries", len(self.genome_evidence))
         snp_evidence = {}
         for contig_id, contig_snp in self.snp_evidence.items():
 
@@ -238,15 +197,14 @@ class GenomeSNPFilter(object):
                 if gene is not None:
                     gene_snp_list.append(snp)
             self.log.info("Contig: %s has %d SNP within gene boundaries", contig_id, len(gene_snp_list))
-            snp_evidence[contig_id] = self.SNPFields(Contigrecord=contig_snp.Contigrecord, SNPlist=gene_snp_list)
+            snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
+                                                            , SNPlist=gene_snp_list)
 
-        return snp_evidence
+        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence)
 
     def filter_cds_snp(self):
 
-        self.log.info("Filtering: %d contiguous regions for SNP within cds boundaries"
-                      , len(self.genome_evidence.get_genome_evidence()))
-
+        self.log.info("Filtering: %d contiguous regions for SNP within cds boundaries", len(self.genome_evidence))
         snp_evidence = {}
         for contig_id, contig_snp in self.snp_evidence.items():
 
@@ -256,6 +214,7 @@ class GenomeSNPFilter(object):
                 if cds is not None:
                     cds_snp_list.append(snp)
             self.log.info("Contig: %s has %d SNP within cds boundaries", contig_id, len(cds_snp_list))
-            snp_evidence[contig_id] = self.SNPFields(Contigrecord=contig_snp.Contigrecord, SNPlist=cds_snp_list)
+            snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
+                                                            , SNPlist=cds_snp_list)
 
-        return snp_evidence
+        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence)

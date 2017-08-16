@@ -29,6 +29,40 @@ import time
 # Import the runtime environment object.
 from OSMExecEnv import ExecEnv, __version__
 
+from OSMGFFParser import ParseGFFSeq
+from OSMReadSam import ReadSamFile
+
+
+# ===================================================================================================
+# The application object
+# ====================================================================================================
+
+
+class OSMGenomeComparison(object):
+
+    def __init__(self, args, log):
+
+        # Shallow copies of the runtime environment.
+        self.log = log
+        self.args = args
+
+    def comparison(self):
+
+        parsed_gff = ParseGFFSeq(self.log, self.args.fastaFile, self.args.gffFile).get_parsed_structure()
+
+        mutant_evidence = ReadSamFile( self.log
+                                      , parsed_gff
+                                      , self.args.queueSize
+                                      , self.args.lockGranularity
+                                      , self.args.processCount
+                                      , self.args.mutantFile).get_evidence_object()
+
+        mutant_all_snp = mutant_evidence.get_all_snp(self.args.minMutantCount, self.args.minMutantProportion)
+
+        mutant_gene_snp = mutant_all_snp.filter_gene_snp()
+
+        mutant_cds_snp = mutant_gene_snp.filter_cds_snp()
+
 
 # ===================================================================================================
 # The program mainline.
@@ -43,7 +77,7 @@ def main():
         ExecEnv.log.info("############ OSM_GENE %s Start Comparison ###########", __version__)
         ExecEnv.log.info("Command Line: %s", ExecEnv.cmdLine)
 
-        ExecEnv.comparison()  # Do the comparison.
+        OSMGenomeComparison(ExecEnv.args, ExecEnv.log).comparison()  # Do the comparison.
 
         ExecEnv.log.info("Command Line: %s", ExecEnv.cmdLine)
         ExecEnv.log.info("Elapsed seconds CPU time %f (all processors, assumes no GPU).", time.clock())

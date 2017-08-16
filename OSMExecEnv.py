@@ -32,8 +32,6 @@ import multiprocessing
 
 __version__ = "0.1"
 
-from OSMGenomeComp import OSMGenomeComparison
-
 # ===================================================================================================
 # A utility class to parse the program runtime arguments
 # and setup a logger to receive analysis output.
@@ -47,7 +45,6 @@ class ExecEnv(object):
     args = None
     log = None
     cmdLine = ""
-    genome_compare = None
 
     def __init__(self):
         """Parse runtime arguments on object creation and maintain the runtime environment"""
@@ -194,12 +191,6 @@ class ExecEnv(object):
                 ExecEnv.args.processCount = 1
 
 
-################# Create Comparison Instance ########################################################
-
-        ExecEnv.genome_compare = OSMGenomeComparison(ExecEnv.args, ExecEnv.log)
-
-################# File logging ########################################################
-
     def setup_logging(self, log_format):
         """Set up Python logging"""
 
@@ -233,11 +224,6 @@ class ExecEnv(object):
         if not append:
             ExecEnv.log.info("Flushed logfile: %s", log_filename)
         ExecEnv.log.info("Logging to file: %s", log_filename)
-
-    @staticmethod
-    def comparison():
-
-        ExecEnv.genome_compare.comparison()
 
     @staticmethod
     def print_description():
