@@ -25,7 +25,10 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import sys
+
 from collections import namedtuple
+from OSM_Filter import GeneDictionary, SNPAnalysis
 from OSMGeneEvidence import GenomeEvidence
 
 
@@ -40,102 +43,94 @@ from OSMGeneEvidence import GenomeEvidence
 
 class GeneAnalysis(object):
 
-    def __init__(self, log, genome_evidence):
+    def __init__(self, log):
         # Shallow copies of the runtime environment.
         self.log = log
-        self.gene_dictionary = GeneDictionary(genome_evidence).get_gene_dictionary()
-        self.genome_evidence = genome_evidence
-        self.count_threshold = 20
 
-    def print_contig_stats(self):
+    def print_snp_stats(self, snp_analysis_obj):
 
         total_SNP_mutations = 0
-        for contig_id, contig_evidence in self.genome_evidence.get_genome_evidence().items():
-            contig_SNP_mutations = 0
+        for contig_id, contig_evidence in snp_analysis_obj.get_snp_evidence().items():
 
-            for gene in self.gene_dictionary[contig_id].Genelist:
-                contig_SNP_mutations += self.print_gene_stats(gene, contig_evidence)
+            self.log.info("********** Contig: %s, SNP: %d, *********", contig_id, len(contig_evidence.SNPlist))
+            for snp in contig_evidence.SNPlist:
+                self.print_snp(contig_id, snp, snp_analysis_obj.get_genome_evidence())
+                gene = snp_analysis_obj.get_gene_dictionary().get_gene(contig_id, snp)
+                if gene is not None:
+                    cds = snp_analysis_obj.get_gene_dictionary().get_cds(contig_id, snp)
+                    self.print_gene_stats(gene, cds, snp)
 
-            self.log.info("********** Contig, %s, SNP, %d, *********", contig_id, contig_SNP_mutations)
-            total_SNP_mutations += contig_SNP_mutations
+            total_SNP_mutations += len(contig_evidence.SNPlist)
 
         self.log.info("Genome has a total of %d SNP mutations", total_SNP_mutations)
 
-    def print_gene_stats(self, gene, contig_evidence):
+    def print_gene_stats(self, gene, cds, snp):
 
-        fixed = contig_evidence.Contigfixedarray
-        insert = contig_evidence.Contiginsertarray
-        contig = contig_evidence.Contigrecord
-        mutant_seq = contig.seq
-        mutant_seq_lower = mutant_seq.lower()
-        gene_SNP_mutations = 0
+        if "description" in gene.qualifiers:
+            description = "+".join(gene.qualifiers["description"])
+        else:
+            description = "no description"
+        snp_type = "CDS" if cds is not None else "Intron"
+        self.log.info( "Gene:%s, Description:%s, Offset:%d, Type:%s"
+                      , gene.id, description, (snp-gene.location.start), snp_type)
+
+    def print_snp(self, contig_id, snp_index, genome_evidence):
+
+        contig = genome_evidence[contig_id].Contigrecord
+        fixed = genome_evidence[contig_id].Contigfixedarray
+        insert = genome_evidence[contig_id].Contiginsertarray
+
+        nucleotide = contig.seq[snp_index]
+        nucleotide_count = fixed[snp_index][GenomeEvidence.nucleotide_offset[nucleotide]]
+        a_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["A"]]
+        c_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["C"]]
+        g_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["G"]]
+        t_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["T"]]
+        delete_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["-"]]
+        insert_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["+"]]
+        count_list = [a_count, c_count, g_count, t_count, delete_count, insert_count]
+        mutation_nucleotide = GenomeEvidence.nucleotide_list[count_list.index(max(count_list))]
+        sum_count_list = float(sum(count_list))
+        if sum_count_list > 0:
+            proportion_mutant = 1.0 - (nucleotide_count / sum_count_list)
+        else:
+            proportion_mutant = 0.0
+
+        self.log.info("Region:%s, Ref.Idx.Mut:%s.%d.%s, Proportion:%f, 'A':%d, 'C': %d, 'G':, %d, 'T': %d, '-':%d, '+':%d"
+                     , contig.id, nucleotide, snp_index, mutation_nucleotide, proportion_mutant
+                     , a_count, c_count, g_count, t_count, delete_count, insert_count)
+
+        if max(count_list) == insert_count:
+            lookback = 100
+            for idx in range(snp_index-lookback, snp_index+1):
+                if insert[idx] is not None:
+                    for sequence, count in insert[idx].items():
+                        self.log.info("+Sequence:%s, inserted:%d times, at contig location:%d", sequence, count, idx)
+
+    def old_stuff(self, snp_index, gene, mutant_seq, contig):
 
         if "description" in gene.qualifiers:
             description = "+".join(gene.qualifiers["description"])
         else:
             description = "no description"
 
-        cds_list = GeneDictionary.get_CDS_list(gene.sub_features)
-
-        for cds in cds_list:
-
-            start = cds.location.start
-            end = cds.location.end
-
-            for idx in range(start, end):
-
-                nucleotide = contig.seq[idx]
-                nucleotide_count = fixed[idx][GenomeEvidence.nucleotide_offset[nucleotide]]
-                A_count = fixed[idx][GenomeEvidence.nucleotide_offset["A"]]
-                C_count = fixed[idx][GenomeEvidence.nucleotide_offset["C"]]
-                G_count = fixed[idx][GenomeEvidence.nucleotide_offset["G"]]
-                T_count = fixed[idx][GenomeEvidence.nucleotide_offset["T"]]
-                Delete_count = fixed[idx][GenomeEvidence.nucleotide_offset["-"]]
-                Insert_count = 0 if insert[idx] is None else len(insert[idx])
-                count_list = [A_count, C_count, G_count, T_count, Delete_count, Insert_count]
-                sum_count_list = float(sum(count_list))
-                if sum_count_list > 0:
-                    proportion_mutant = 1.0 - (nucleotide_count / sum_count_list)
-                else:
-                    proportion_mutant = 0.0
-
-                if proportion_mutant >= self.args.minMutantProportion and sum_count_list >= self.args.minMutantCount:
-
-                    gene_SNP_mutations += 1
-                    mutant_seq = self.mutant_dna_sequence(gene, mutant_seq, count_list, idx)
-                    mutant_seq_lower = self.mutant_dna_sequence(gene, mutant_seq_lower, count_list, idx)
-                    if True:
-                        self.log.info("*** Region, %s, Gene, %s, %s, Idx, %d,"
-                                      , contig.id, gene.id, description, idx)
-                        self.log.info("*** Ref, %s, 'A', %d, 'C', %d, 'G', %d, 'T', %d, '-', %d, insert, %d"
-                                      , nucleotide, A_count, C_count, G_count, T_count, Delete_count, Insert_count)
-                        if Insert_count == max(count_list):
-                            self.log.info("%Insert %%%%%%%%%%")
-                        if Delete_count == max(count_list):
-                            self.log.info("%Delete %%%%%%%%%%")
-
-        if gene_SNP_mutations > 0 and False:
-            mutant_protein = gene.extract(mutant_seq).translate()
-            original_protein = gene.extract(contig.seq).translate()
-            self.log.info("SNP, %d, Region, %s, Gene, %s, Function, %s"
-                          , gene_SNP_mutations, contig.id, gene.id, description)
-            if mutant_protein != original_protein:
-                difference_string = ""
-                for i in range(len(mutant_protein)):
-                    if i < len(original_protein):
-                        if mutant_protein[i] == original_protein[i]:
-                            difference_string += mutant_protein[i].lower()
-                        else:
-                            self.log.info("Mutant Residue: %s", original_protein[i]+str(i+1)+mutant_protein[i].upper())
-                            difference_string += "{}=>{}".format(original_protein[i], mutant_protein[i].upper())
+        mutant_protein = gene.extract(mutant_seq).translate()
+        original_protein = gene.extract(contig.seq).translate()
+        self.log.info("SNP, %d, Region, %s, Gene, %s, Function, %s", snp_index, contig.id, gene.id, description)
+        if mutant_protein != original_protein:
+            difference_string = ""
+            for i in range(len(mutant_protein)):
+                if i < len(original_protein):
+                    if mutant_protein[i] == original_protein[i]:
+                        difference_string += mutant_protein[i].lower()
                     else:
-                        difference_string += mutant_protein[i].upper()
-                self.log.info("Mutant Protein Residue Sequence  :%s", difference_string)
-            else:
-                self.log.info("No Protein Missense, Original Protein: %s", original_protein)
-
-        return gene_SNP_mutations
-
+                        self.log.info("Mutant Residue: %s", original_protein[i]+str(i+1)+mutant_protein[i].upper())
+                        difference_string += "{}=>{}".format(original_protein[i], mutant_protein[i].upper())
+                else:
+                    difference_string += mutant_protein[i].upper()
+            self.log.info("Mutant Protein Residue Sequence  :%s", difference_string)
+        else:
+            self.log.info("No Protein Missense, Original Protein: %s", original_protein)
 
     def mutant_dna_sequence(self, gene, mutant_seq, count_list, idx):
 

@@ -25,6 +25,7 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 from collections import namedtuple
+import copy
 
 from OSM_Filter import SNPAnalysis
 
@@ -38,7 +39,8 @@ from OSM_Filter import SNPAnalysis
 
 class GenomeEvidence(object):
 
-    nucleotide_offset = {"A": 0, "C": 1, "G": 2, "T": 3, "U": 3, "-": 4}
+    nucleotide_offset = {"A": 0, "a" : 0, "C": 1, "c": 1, "G": 2, "g" : 2, "T": 3, "t": 3, "U": 3, "u" : 3, "-": 4, "+": 5}
+    nucleotide_list = [ "A", "C", "G", "T", "-", "+"]
     EvidenceFields = namedtuple("EvidenceFields", "Contigrecord Contigfixedarray Contiginsertarray")
 
     def __init__(self, log, sam_evidence):
@@ -73,7 +75,6 @@ class GenomeEvidence(object):
 
             contig_snp_list = []
             fixed = contig_evidence.Contigfixedarray
-            insert = contig_evidence.Contiginsertarray
             contig = contig_evidence.Contigrecord
 
             for idx in range(len(contig.seq)):
@@ -85,7 +86,7 @@ class GenomeEvidence(object):
                 g_count = fixed[idx][GenomeEvidence.nucleotide_offset["G"]]
                 t_count = fixed[idx][GenomeEvidence.nucleotide_offset["T"]]  # nucleotide 'T' and 'U'
                 delete_count = fixed[idx][GenomeEvidence.nucleotide_offset["-"]]
-                insert_count = 0 if insert[idx] is None else len(insert[idx])
+                insert_count = fixed[idx][GenomeEvidence.nucleotide_offset["+"]]
                 count_list = [a_count, c_count, g_count, t_count, delete_count, insert_count]
                 sum_count_list = float(sum(count_list))
                 if sum_count_list > 0:
@@ -105,8 +106,10 @@ class GenomeEvidence(object):
 
         evidence = {}
         for contig_id, contig_evidence in sam_evidence.items():
+            # The fixed array in sam_evidence is a c_type RawArray so we will do a deepcopy
+            contig_fixed_array = copy.deepcopy(contig_evidence.Contigfixedarray)
             evidence[contig_id] = GenomeEvidence.EvidenceFields( Contigrecord=contig_evidence.Contigrecord
-                                                                , Contigfixedarray=contig_evidence.Contigfixedarray
+                                                                , Contigfixedarray=contig_fixed_array
                                                                 , Contiginsertarray=contig_evidence.Contiginsertarray)
         return evidence
 

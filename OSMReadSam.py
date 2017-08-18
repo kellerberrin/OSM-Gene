@@ -160,7 +160,8 @@ class ReadSamFile(object):
 
     def __make_evidence_array(self, contig_seqrecord):
 
-        nucleotides = 5  # for each numpy array element allocate storage for (in order} 'A', 'C', 'G', 'T' ('U'), '-'
+        # for each numpy array element allocate storage for (in order} 'A', 'C', 'G', 'T' ('U'), '-', '+'
+        nucleotides = len(GenomeEvidence.nucleotide_list)
         seq_length = len(contig_seqrecord.seq)
         numpy_shape = (seq_length, nucleotides)
         evidence_fixed_array = self.__get_shared_numpy(numpy_shape)  # create the fixed numpy array
@@ -269,6 +270,7 @@ class ReadSamFile(object):
         cigar_list = self.__decode_cigar(sam_record.Cigar)  # returns a list of cigar tuples (Code, Count)
         current_position = int(sam_record.Pos) - 1     # Adjust for the 1 offset convention in sam files.
 
+
         if sam_record.Rname == "*":
             self.unmapped_read.value += 1
             return
@@ -284,13 +286,14 @@ class ReadSamFile(object):
         reference_sequence = contig_evidence.Contigrecord.seq
         granularity_locks = contig_evidence.Contiglocks
 
+        if current_position >= len(reference_sequence):
+            self.log.error("Sam record error - Sequence Size Exceeded at Position: %d; Region: %s, len: %d"
+                           , current_position, sam_record.Rname, len(reference_sequence))
+            sys.exit()
+
         sam_idx = 0
 
         for cigar in cigar_list:
-
-            if cigar.Code not in "SH" and cigar.Count + current_position > len(reference_sequence):
-                self.log.warning("Sequence Size Exceeded at Position: %d; Region: %s, len: %d, Cigar Item: (%s,%d)"
-                                 , current_position, sam_record.Rname, len(reference_sequence), cigar.Code, cigar.Count)
 
             if cigar.Code in "MX=":
 
@@ -329,6 +332,15 @@ class ReadSamFile(object):
                 current_position += cigar.Count
 
             elif cigar.Code == "I":
+
+                offset = GenomeEvidence.nucleotide_offset["+"]
+                for idx in range(cigar.Count):
+                # Shared memory is protected with a granularity lock
+
+                    if current_position + idx < len(reference_sequence):
+                        granularity_locks.acquire(seq_index)
+                        evidence_fixed_array[current_position + idx][offset] += 1
+                        granularity_locks.release(seq_index)
 
                 insert_sequence = sam_record.Sequence[sam_idx: (sam_idx+cigar.Count)]
                 insert_record = ReadSamFile.InsertTuple( Contigid=sam_record.Rname

@@ -186,6 +186,15 @@ class SNPAnalysis(object):
     #
     ##############################################################################################
 
+    def get_snp_evidence(self):
+        return self.snp_evidence
+
+    def get_gene_dictionary(self):
+        return self.gene_dictionary
+
+    def get_genome_evidence(self):
+        return self.genome_evidence
+
     def filter_gene_snp(self):
 
         self.log.info("Filtering: %d contiguous regions for SNP within gene boundaries", len(self.genome_evidence))
@@ -194,7 +203,7 @@ class SNPAnalysis(object):
 
             gene_snp_list = []
             for snp in contig_snp.SNPlist:
-                gene =self.gene_dictionary.get_gene(contig_id, snp)
+                gene = self.gene_dictionary.get_gene(contig_id, snp)
                 if gene is not None:
                     gene_snp_list.append(snp)
             self.log.info("Contig: %s has %d SNP within gene boundaries", contig_id, len(gene_snp_list))
@@ -211,7 +220,7 @@ class SNPAnalysis(object):
 
             cds_snp_list = []
             for snp in contig_snp.SNPlist:
-                cds =self.gene_dictionary.get_cds(contig_id, snp)
+                cds = self.gene_dictionary.get_cds(contig_id, snp)
                 if cds is not None:
                     cds_snp_list.append(snp)
             self.log.info("Contig: %s has %d SNP within cds boundaries", contig_id, len(cds_snp_list))
@@ -221,57 +230,28 @@ class SNPAnalysis(object):
         return SNPAnalysis(self.log, self.genome_evidence,snp_evidence)
 
     def union(self, snp_analysis):
-        snp_evidence = {}
-        for contig_id, contig_snp in self.snp_evidence.items():
-
-            if contig_id not in snp_analysis.snp_evidence:
-                self.log.error("SNP union; contig region: %s not found in both snp evidence objects", contig_id)
-                sys.exit()
-
-            s_snp = set(contig_snp.SNPlist)
-            t_snp = set(snp_analysis.snp_evidence[contig_id].SNPlist)
-            result_snp_list = list(s_snp.union(t_snp))
-            snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
-                                                            , SNPlist=result_snp_list)
-
-        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence)
+        def operator(s,t): return s.union(t)
+        return self.__binary_set_operation(operator, snp_analysis)
 
     def intersection(self, snp_analysis):
-
-        snp_evidence = {}
-        for contig_id, contig_snp in self.snp_evidence.items():
-
-            if contig_id not in snp_analysis.snp_evidence:
-                self.log.error("SNP union; contig region: %s not found in both snp evidence objects", contig_id)
-                sys.exit()
-
-            s_snp = set(contig_snp.SNPlist)
-            t_snp = set(snp_analysis.snp_evidence[contig_id].SNPlist)
-            result_snp_list = list(s_snp.intersection(t_snp))
-            snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
-                                                            , SNPlist=result_snp_list)
-
-        return SNPAnalysis(self.log, self.genome_evidence, snp_evidence)
+        def operator(s,t): return s.intersection(t)
+        return self.__binary_set_operation(operator, snp_analysis)
 
     def difference(self, snp_analysis):
-
-        snp_evidence = {}
-        for contig_id, contig_snp in self.snp_evidence.items():
-
-            if contig_id not in snp_analysis.snp_evidence:
-                self.log.error("SNP union; contig region: %s not found in both snp evidence objects", contig_id)
-                sys.exit()
-
-            s_snp = set(contig_snp.SNPlist)
-            t_snp = set(snp_analysis.snp_evidence[contig_id].SNPlist)
-            result_snp_list = list(s_snp.difference(t_snp))
-            snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
-                                                            , SNPlist=result_snp_list)
-
-        return SNPAnalysis(self.log, self.genome_evidence, snp_evidence)
+        def operator(s,t): return s.difference(t)
+        return self.__binary_set_operation(operator, snp_analysis)
 
     def symmetric_difference(self, snp_analysis):
+        def operator(s,t): return s.symmetric_difference(t)
+        return self.__binary_set_operation(operator, snp_analysis)
 
+    ##############################################################################################
+    #
+    #   Private class members
+    #
+    ##############################################################################################
+
+    def __binary_set_operation(self, operator, snp_analysis):
         snp_evidence = {}
         for contig_id, contig_snp in self.snp_evidence.items():
 
@@ -281,8 +261,8 @@ class SNPAnalysis(object):
 
             s_snp = set(contig_snp.SNPlist)
             t_snp = set(snp_analysis.snp_evidence[contig_id].SNPlist)
-            result_snp_list = list(s_snp.symmetric_difference(t_snp))
+            result_snp_set = operator(s_snp, t_snp)
+            result_snp_list = list(result_snp_set)
             snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
                                                             , SNPlist=result_snp_list)
-
-        return SNPAnalysis(self.log, self.genome_evidence, snp_evidence)
+        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence)

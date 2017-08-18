@@ -31,6 +31,7 @@ from OSMExecEnv import ExecEnv, __version__
 
 from OSMGFFParser import ParseGFFSeq
 from OSMReadSam import ReadSamFile
+from OSMGeneAnalysis import GeneAnalysis
 
 
 # ===================================================================================================
@@ -59,26 +60,30 @@ class OSMGenomeComparison(object):
 
         mutant_all_snp = mutant_evidence.get_all_snp(self.args.minMutantCount, self.args.minMutantProportion)
 
-        mutant_gene_snp = mutant_all_snp.filter_gene_snp()
+        GeneAnalysis(self.log).print_snp_stats(mutant_all_snp)
 
-        mutant_cds_snp = mutant_gene_snp.filter_cds_snp()
+        mutant_cds_snp = mutant_all_snp.filter_cds_snp()
 
-        parent_evidence = ReadSamFile( self.log
-                                      , parsed_gff
-                                      , self.args.queueSize
-                                      , self.args.lockGranularity
-                                      , self.args.processCount
-                                      , self.args.parentFile).get_evidence_object()
 
-        parent_all_snp = parent_evidence.get_all_snp(self.args.minParentCount, self.args.minParentProportion)
+        if self.args.parentFile != "noParent":
 
-        union_snp = parent_all_snp.union(mutant_all_snp)
+            parent_evidence = ReadSamFile( self.log
+                                          , parsed_gff
+                                          , self.args.queueSize
+                                          , self.args.lockGranularity
+                                          , self.args.processCount
+                                          , self.args.parentFile).get_evidence_object()
 
-        intersection_snp = parent_all_snp.intersection(mutant_all_snp)
+            parent_all_snp = parent_evidence.get_all_snp(self.args.minParentCount, self.args.minParentProportion)
 
-        difference_snp = parent_all_snp.difference(mutant_all_snp)
+            GeneAnalysis(self.log).print_snp_stats(parent_all_snp)
 
-        symmetric_difference = parent_all_snp.symmetric_difference(mutant_all_snp)
+            parent_cds_snp = parent_all_snp.filter_cds_snp()
+
+            novel_mutant_snp = mutant_cds_snp.difference(parent_cds_snp)
+
+            GeneAnalysis(self.log).print_snp_stats(novel_mutant_snp)
+
 
 # ===================================================================================================
 # The program mainline.

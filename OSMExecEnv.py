@@ -105,22 +105,22 @@ class ExecEnv(object):
                                  'The log file always resides in the work directory.')
 
         # "minimum_variant_SAM read count" in Jeremy Horst's code
-        parser.add_argument("--mutantcount", dest="minMutantCount", default=20,
+        parser.add_argument("--mutantcount", dest="minMutantCount", default=int(20),
                             help=("The minimum SAM/BAM coverage for the a single nucleotide analyzed in the Mutant"
                                   " genome."))
 
         # "minimum_variant_snp proportion" in Jeremy Horst's code
-        parser.add_argument("--mutantprop", dest="minMutantProportion", default=0.7,
+        parser.add_argument("--mutantprop", dest="minMutantProportion", default=float(0.7),
                             help=("The minimum proportion of a single nucleotide analyzed in the Mutant genome that is"
                                   " at variance from the reference (fasta) genome"))
 
         # "minimum_wildtype_SAM read count" in Jeremy Horst's code
-        parser.add_argument("--parentcount", dest="minParentCount", default=20,
+        parser.add_argument("--parentcount", dest="minParentCount", default=int(20),
                             help=("The minimum SAM/BAM count of a single nucleotide analyzed in the Parent (wild-type)"
                                   " genome that is at variance from the reference (fasta) genome"))
 
         # "minimum_wildtype_snp proportion" in Jeremy Horst's code
-        parser.add_argument("--parentprop", dest="minParentProportion", default=0.7,
+        parser.add_argument("--parentprop", dest="minParentProportion", default=float(0.7),
                             help=("The minimum proportion of a single nucleotide analyzed in the Parent (wild-type)"
                                   " genome that is at variance from the reference (fasta) genome"))
 
@@ -188,6 +188,11 @@ class ExecEnv(object):
             if ExecEnv.args.processCount < 1:
                 ExecEnv.args.processCount = 1
 
+        # Enforce typing
+        ExecEnv.args.minMutantProportion = float(ExecEnv.args.minMutantProportion)
+        ExecEnv.args.minMutantCount = int(ExecEnv.args.minMutantCount)
+        ExecEnv.args.minParentCount = int(ExecEnv.args.minParentCount)
+        ExecEnv.args.minParentProportion = float(ExecEnv.args.minParentProportion)
 
     def setup_logging(self, log_format):
         """Set up Python logging"""
