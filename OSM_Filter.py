@@ -51,14 +51,17 @@ class GeneDictionary(object):
     #
     ##############################################################################################
 
-    def get_gene_dictionary(self):
-        return self.contig_dict
-
     def get_gene(self, contig_id, sequence_idx):  # returns NULL if the sequence_idx does not lie within a gene.
         return self.__lookup_gene_feature_list(contig_id, sequence_idx)
 
     def get_cds(self, contig_id, sequence_idx):  # returns NULL if the sequence_idx does not lie within a cds
         return self.__lookup_cds_feature_list(contig_id, sequence_idx)
+
+    def get_upstream_gene(self, contig_id, sequence_idx):  # returns the nearest gene in increasing contig. sequence.
+        return self.__upstream_feature_list(contig_id, sequence_idx)
+
+    def get_downstream_gene(self, contig_id, sequence_idx):  # returns the nearest gene in decreasing contig sequence.
+        return self.__downstream_feature_list(contig_id, sequence_idx)
 
     ##############################################################################################
     #
@@ -116,7 +119,7 @@ class GeneDictionary(object):
         else:
             gene = None
 
-        return gene
+        return gene  # returns None if the sequence_idx is not within a gene, else returns the CDS (SeqFeature) record.
 
     def __lookup_cds_feature_list(self, contig_id, sequence_idx):
 
@@ -134,7 +137,40 @@ class GeneDictionary(object):
         else:
             cds = None
 
-        return cds
+        return cds  # returns None if the sequence_idx is not within a CDS, else returns the CDS (SeqFeature) record.
+
+    def __upstream_feature_list(self, contig_id, sequence_idx):
+
+        def find_ge(a, x):
+            'Find leftmost item greater than or equal to x'
+            i = bisect.bisect_left(a, x)
+            return i if i != len(a) else None
+
+        gene_dict = self.contig_dict[contig_id]
+        gene_idx = find_ge(gene_dict.Geneoffsets, sequence_idx)
+        if gene_idx is not None:
+            gene = gene_dict.Genelist[gene_idx]
+        else:
+            gene = None
+
+        return gene  # returns None if the sequence_idx is more than the beginning of the last gene in the contig.
+
+
+    def __downstream_feature_list(self, contig_id, sequence_idx):
+
+        def find_le(a, x):
+            'Find rightmost value less than or equal to x'
+            i = bisect.bisect_right(a, x)
+            return (i-1) if i else None
+
+        gene_dict = self.contig_dict[contig_id]
+        gene_idx = find_le(gene_dict.Geneoffsets, sequence_idx)
+        if gene_idx is not None:
+            gene = gene_dict.Genelist[gene_idx]
+        else:
+            gene = None
+
+        return gene  # returns None if the sequence_idx is less than the beginning of the first gene in the contig.
 
     def __sorted_cds_list(self, contig_seqrecord):
 

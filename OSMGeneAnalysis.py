@@ -59,6 +59,8 @@ class GeneAnalysis(object):
                 if gene is not None:
                     cds = snp_analysis_obj.get_gene_dictionary().get_cds(contig_id, snp)
                     self.print_gene_stats(gene, cds, snp)
+                else:
+                    self.print_location(snp_analysis_obj, contig_id, snp)
 
             total_SNP_mutations += len(contig_evidence.SNPlist)
 
@@ -68,11 +70,42 @@ class GeneAnalysis(object):
 
         if "description" in gene.qualifiers:
             description = "+".join(gene.qualifiers["description"])
+            description.replace(",", " ")
         else:
             description = "no description"
         snp_type = "CDS" if cds is not None else "Intron"
-        self.log.info( "Gene:%s, Description:%s, Offset:%d, Type:%s"
-                      , gene.id, description, (snp-gene.location.start), snp_type)
+        self.log.info( "%s, [%d %d %s], %s, Offset:%d, Type:%s"
+                      , gene.id, gene.location.start, gene.location.end, gene.location.strand
+                      , description, (snp-gene.location.start), snp_type)
+
+    def print_location(self, snp_analysis_obj, contig_id, snp):
+
+        upstream_gene = snp_analysis_obj.get_gene_dictionary().get_upstream_gene(contig_id, snp)
+        downstream_gene = snp_analysis_obj.get_gene_dictionary().get_downstream_gene(contig_id, snp)
+
+        if upstream_gene is not None and downstream_gene is not None:
+
+            self.log.info( "%s, [%d %d %s], EndOffset:%d, %s, [%d %d %s], BeginOffset:%s"
+                          , downstream_gene.id, downstream_gene.location.start, downstream_gene.location.end
+                          , downstream_gene.location.strand, (snp-downstream_gene.location.end)
+                          , upstream_gene.id, upstream_gene.location.start, upstream_gene.location.end
+                          , upstream_gene.location.strand, (upstream_gene.location.start-snp))
+
+        elif downstream_gene is not None:
+
+            self.log.info( "%s, [%d %d %s], EndOffset:%d"
+                          , downstream_gene.id, downstream_gene.location.start, downstream_gene.location.end
+                          , downstream_gene.location.strand, (snp-downstream_gene.location.end))
+
+        elif upstream_gene is not None:
+
+            self.log.info( "%s, [%d %d %s], BeginOffset:%s"
+                          , upstream_gene.id, upstream_gene.location.start, upstream_gene.location.end
+                          , upstream_gene.location.strand, (upstream_gene.location.start-snp))
+
+        else:
+
+            self.log.warning( "No upstream or downstream gene found for contig: %s location: %d", contig_id, snp)
 
     def print_snp(self, contig_id, snp_index, genome_evidence):
 
