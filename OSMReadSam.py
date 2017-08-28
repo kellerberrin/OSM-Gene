@@ -34,6 +34,7 @@ import re
 import sys
 import copy
 
+from OSMGeneEvidence import GenomeEvidence
 from OSMSamEvidence import SamFileEvidence
 
 
