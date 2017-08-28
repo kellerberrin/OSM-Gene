@@ -72,7 +72,7 @@ class GeneDictionary(object):
     def __genome_contig_dict(self, genome_evidence):
 
         contig_dict = {}
-        for contig_id, contig_evidence in genome_evidence.items():
+        for contig_id, contig_evidence in genome_evidence.get_genome_evidence().items():
             contig_record = contig_evidence.Contigrecord
             gene_list = self.__sorted_gene_list(contig_record)  # sorted by increasing contig sequence position
             gene_offset_list = self.__get_feature_offsets(gene_list)  # sorted list of gene sequence index offsets.
@@ -209,12 +209,14 @@ class SNPAnalysis(object):
 
     SNPFields = namedtuple("SNPFields", "Contigrecord SNPlist")
 
-    def __init__(self, log, genome_evidence, snp_evidence):
+    def __init__(self, log, genome_evidence, snp_evidence, minimum_count, mutation_proportion):
 
         self.log = log
         self.genome_evidence = genome_evidence
         self.snp_evidence = snp_evidence
         self.gene_dictionary = GeneDictionary(genome_evidence)
+        self.minimum_count = minimum_count
+        self.mutation_proportion = mutation_proportion
 
     ##############################################################################################
     #
@@ -231,6 +233,12 @@ class SNPAnalysis(object):
     def get_genome_evidence(self):
         return self.genome_evidence
 
+    def get_minimum_count(self):
+        return self.minimum_count
+
+    def get_mutation_proportion(self):
+        return self.mutation_proportion
+
     def filter_gene_snp(self):
 
         self.log.info("Filtering: %d contiguous regions for SNP within gene boundaries", len(self.genome_evidence))
@@ -246,11 +254,12 @@ class SNPAnalysis(object):
             snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
                                                             , SNPlist=gene_snp_list)
 
-        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence)
+        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence, self.minimum_count, self.mutation_proportion)
 
     def filter_cds_snp(self):
 
-        self.log.info("Filtering: %d contiguous regions for SNP within cds boundaries", len(self.genome_evidence))
+        self.log.info("Filtering: %d contiguous regions for SNP within cds boundaries"
+                      , len(self.genome_evidence.get_genome_evidence()))
         snp_evidence = {}
         for contig_id, contig_snp in self.snp_evidence.items():
 
@@ -263,7 +272,7 @@ class SNPAnalysis(object):
             snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
                                                             , SNPlist=cds_snp_list)
 
-        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence)
+        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence, self.minimum_count, self.mutation_proportion)
 
     def union(self, snp_analysis):
         def operator(s,t): return s.union(t)
@@ -301,4 +310,4 @@ class SNPAnalysis(object):
             result_snp_list = list(result_snp_set)
             snp_evidence[contig_id] = SNPAnalysis.SNPFields(Contigrecord=contig_snp.Contigrecord
                                                             , SNPlist=result_snp_list)
-        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence)
+        return SNPAnalysis(self.log, self.genome_evidence,snp_evidence, self.minimum_count, self.mutation_proportion)

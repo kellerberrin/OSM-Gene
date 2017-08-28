@@ -125,17 +125,25 @@ class ExecEnv(object):
                                   " genome that is at variance from the reference (fasta) genome"))
 
         # Specific to the SAM file read object (ReadSamFile)
-        parser.add_argument("--processes", dest="processCount", default=-1,
+        parser.add_argument("--processes", dest="processCount", default=int(-1),
                             help=("The number of CPU processes (not threads!) assigned to processing SAM genome data."
                                   " Defaults to the number of (CPU processors available)."))
 
         # Specific to the SAM file read object (ReadSamFile)
-        parser.add_argument("--queuesize", dest="queueSize", default=1000000,
+        parser.add_argument("--queuesize", dest="queueSize", default=int(1000000),
                             help=("The maximum number of SAM records held in the inter-process record queue"))
 
         # Specific to the SAM file read object (ReadSamFile)
-        parser.add_argument("--lockgranularity", dest="lockGranularity", default=1000,
+        parser.add_argument("--lockgranularity", dest="lockGranularity", default=int(1000),
                             help=("The number of nucleotide positions per inter-process write lock (less is faster)"))
+
+        # Output file
+        parser.add_argument("--output", dest="outputFile", default="noOutput",
+                            help=("Optional comma delimited csv output file"))
+
+        # Flush the Output file
+        parser.add_argument("--flush", dest="flushOutputFile",  action="store_true",
+                            help=("Flush (empty) the output file before writing to it."))
 
         # --version
         parser.add_argument("--version", action="version", version=__version__)
@@ -179,8 +187,16 @@ class ExecEnv(object):
 
         ExecEnv.args.gffFile = os.path.join(ExecEnv.args.workDirectory, ExecEnv.args.gffFile)
         ExecEnv.args.fastaFile = os.path.join(ExecEnv.args.workDirectory, ExecEnv.args.fastaFile)
-        ExecEnv.args.parentFile = os.path.join(ExecEnv.args.workDirectory, ExecEnv.args.parentFile)
         ExecEnv.args.mutantFile = os.path.join(ExecEnv.args.workDirectory, ExecEnv.args.mutantFile)
+
+        if ExecEnv.args.parentFile != "noParent":
+            ExecEnv.args.parentFile = os.path.join(ExecEnv.args.workDirectory, ExecEnv.args.parentFile)
+
+        if ExecEnv.args.outputFile != "noOutput":
+            ExecEnv.args.outputFile = os.path.join(ExecEnv.args.workDirectory, ExecEnv.args.outputFile)
+            if ExecEnv.args.flushOutputFile:
+                if os.path.isfile(ExecEnv.args.outputFile):
+                    os.unlink(ExecEnv.args.outputFile)
 
         # Default the SAM read processes to the number of CPUs available
         if ExecEnv.args.processCount < 1:

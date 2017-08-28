@@ -51,38 +51,42 @@ class OSMGenomeComparison(object):
 
         parsed_gff = ParseGFFSeq(self.log, self.args.fastaFile, self.args.gffFile).get_parsed_structure()
 
-        mutant_evidence = ReadSamFile( self.log
-                                      , parsed_gff
-                                      , self.args.queueSize
-                                      , self.args.lockGranularity
-                                      , self.args.processCount
-                                      , self.args.mutantFile).get_evidence_object()
+        mutant_evidence = self.__read_sam(parsed_gff, self.args.mutantFile)
+
+        mutant_evidence.set_sam_filename("Mutant")
 
         mutant_all_snp = mutant_evidence.get_all_snp(self.args.minMutantCount, self.args.minMutantProportion)
 
-        GeneAnalysis(self.log).print_snp_stats(mutant_all_snp)
+        GeneAnalysis(self.log).print_snp_stats(mutant_all_snp, self.args.outputFile)
 
         mutant_cds_snp = mutant_all_snp.filter_cds_snp()
 
-
         if self.args.parentFile != "noParent":
 
-            parent_evidence = ReadSamFile( self.log
-                                          , parsed_gff
-                                          , self.args.queueSize
-                                          , self.args.lockGranularity
-                                          , self.args.processCount
-                                          , self.args.parentFile).get_evidence_object()
+            parent_evidence = self.__read_sam(parsed_gff, self.args.parentFile)
+
+            parent_evidence.set_sam_filename("Parent")
 
             parent_all_snp = parent_evidence.get_all_snp(self.args.minParentCount, self.args.minParentProportion)
 
-            GeneAnalysis(self.log).print_snp_stats(parent_all_snp)
+            GeneAnalysis(self.log).print_snp_stats(parent_all_snp, self.args.outputFile)
 
             parent_cds_snp = parent_all_snp.filter_cds_snp()
 
             novel_mutant_snp = mutant_cds_snp.difference(parent_cds_snp)
 
-            GeneAnalysis(self.log).print_snp_stats(novel_mutant_snp)
+            GeneAnalysis(self.log).print_snp_stats(novel_mutant_snp, self.args.outputFile)
+
+    def __read_sam(self, parsed_gff, sam_filename):
+
+        sam_file_reader = ReadSamFile( self.log
+                                     , parsed_gff
+                                     , self.args.queueSize
+                                     , self.args.lockGranularity
+                                     , self.args.processCount
+                                     , sam_filename)
+
+        return sam_file_reader.get_evidence_object()
 
 
 # ===================================================================================================

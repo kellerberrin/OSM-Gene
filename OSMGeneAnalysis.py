@@ -47,98 +47,158 @@ class GeneAnalysis(object):
         # Shallow copies of the runtime environment.
         self.log = log
 
-    def print_snp_stats(self, snp_analysis_obj):
+
+    def print_snp_stats(self, snp_analysis_obj, output_file="noOutput"):
+
+        if output_file != "noOutput":
+            output_handle = open(output_file, 'a')
+        else:
+            output_handle = None
 
         total_SNP_mutations = 0
         for contig_id, contig_evidence in snp_analysis_obj.get_snp_evidence().items():
 
             self.log.info("********** Contig: %s, SNP: %d, *********", contig_id, len(contig_evidence.SNPlist))
+            heading = self.print_nucleotide_heading()
+            if output_handle is not None:
+                output_handle.write(heading + "\n")
+            self.log.info(heading)
             for snp in contig_evidence.SNPlist:
-                self.print_snp(contig_id, snp, snp_analysis_obj.get_genome_evidence())
-                gene = snp_analysis_obj.get_gene_dictionary().get_gene(contig_id, snp)
-                if gene is not None:
-                    cds = snp_analysis_obj.get_gene_dictionary().get_cds(contig_id, snp)
-                    self.print_gene_stats(gene, cds, snp)
-                else:
-                    self.print_location(snp_analysis_obj, contig_id, snp)
+
+                snp_line = self.print_location(snp_analysis_obj, contig_id, snp)
+
+                if output_handle is not None:
+                    output_handle.write(snp_line + "\n")
 
             total_SNP_mutations += len(contig_evidence.SNPlist)
 
         self.log.info("Genome has a total of %d SNP mutations", total_SNP_mutations)
 
-    def print_gene_stats(self, gene, cds, snp):
+        if output_handle is not None:
+            output_handle.close()
+
+    def print_location(self, snp_analysis_obj, contig_id, sequence_idx):
+
+        genome_evidence = snp_analysis_obj.get_genome_evidence()
+        gene_dictionary = snp_analysis_obj.get_gene_dictionary()
+        mutation_proportion = snp_analysis_obj.get_mutation_proportion()
+
+        location_type = "NonGene"
+        gene = gene_dictionary.get_gene(contig_id, sequence_idx)
+        if gene is not None:
+            featurelocation = self.gene_location(gene, sequence_idx)
+            cds = gene_dictionary.get_cds(contig_id, sequence_idx)
+            if cds is not None:
+                location_type = "CDS"
+            else:
+                location_type = "Intron"
+        else:
+            featurelocation = self.non_gene_location(snp_analysis_obj, contig_id, sequence_idx)
+
+        location = self.print_nucleotide_evidence( genome_evidence, contig_id, location_type
+                                                 , sequence_idx, mutation_proportion)
+
+        location = location + featurelocation
+
+        self.log.info(location)
+
+        return location
+
+    def gene_location(self, gene, snp):
 
         if "description" in gene.qualifiers:
             description = "+".join(gene.qualifiers["description"])
             description.replace(",", " ")
         else:
             description = "no description"
-        snp_type = "CDS" if cds is not None else "Intron"
-        self.log.info( "%s, [%d %d %s], %s, Offset:%d, Type:%s"
-                      , gene.id, gene.location.start, gene.location.end, gene.location.strand
-                      , description, (snp-gene.location.start), snp_type)
 
-    def print_location(self, snp_analysis_obj, contig_id, snp):
+        location = ", {}, {}, {}, {}, {}, {}".format(gene.id, gene.location.start, gene.location.end
+                                                    , gene.location.strand, description
+                                                    , (snp-gene.location.start))
+
+        return location
+
+    def non_gene_location(self, snp_analysis_obj, contig_id, snp):
 
         upstream_gene = snp_analysis_obj.get_gene_dictionary().get_upstream_gene(contig_id, snp)
         downstream_gene = snp_analysis_obj.get_gene_dictionary().get_downstream_gene(contig_id, snp)
 
         if upstream_gene is not None and downstream_gene is not None:
 
-            self.log.info( "%s, [%d %d %s], EndOffset:%d, %s, [%d %d %s], BeginOffset:%s"
-                          , downstream_gene.id, downstream_gene.location.start, downstream_gene.location.end
+            location = ", {}, {}, {}, {}, {}, {}, {}, {}, {}, {}".format(downstream_gene.id
+                          , downstream_gene.location.start, downstream_gene.location.end
                           , downstream_gene.location.strand, (snp-downstream_gene.location.end)
                           , upstream_gene.id, upstream_gene.location.start, upstream_gene.location.end
                           , upstream_gene.location.strand, (upstream_gene.location.start-snp))
 
         elif downstream_gene is not None:
 
-            self.log.info( "%s, [%d %d %s], EndOffset:%d"
-                          , downstream_gene.id, downstream_gene.location.start, downstream_gene.location.end
+            location = ", {}, {}, {}, {}, {},,,,,".format(downstream_gene.id
+                          , downstream_gene.location.start, downstream_gene.location.end
                           , downstream_gene.location.strand, (snp-downstream_gene.location.end))
 
         elif upstream_gene is not None:
 
-            self.log.info( "%s, [%d %d %s], BeginOffset:%s"
-                          , upstream_gene.id, upstream_gene.location.start, upstream_gene.location.end
+            location = ",,,,,, {}, {}, {}, {}, {}".format(upstream_gene.id
+                          , upstream_gene.location.start, upstream_gene.location.end
                           , upstream_gene.location.strand, (upstream_gene.location.start-snp))
 
         else:
 
+            location = ", error_no_location"
             self.log.warning( "No upstream or downstream gene found for contig: %s location: %d", contig_id, snp)
 
-    def print_snp(self, contig_id, snp_index, genome_evidence):
 
-        contig = genome_evidence[contig_id].Contigrecord
-        fixed = genome_evidence[contig_id].Contigfixedarray
-        insert = genome_evidence[contig_id].Contiginsertarray
+        return location
 
-        nucleotide = contig.seq[snp_index]
-        nucleotide_count = fixed[snp_index][GenomeEvidence.nucleotide_offset[nucleotide]]
-        a_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["A"]]
-        c_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["C"]]
-        g_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["G"]]
-        t_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["T"]]
-        delete_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["-"]]
-        insert_count = fixed[snp_index][GenomeEvidence.nucleotide_offset["+"]]
+
+    def print_nucleotide_heading(self):
+
+        return "Organism, Contig, Type, Ref|Location|Mut, A, C, G, T, -, +"
+
+    def print_nucleotide_evidence(self, genome_evidence, contig_id, location_type, sequence_idx, mutation_proportion):
+
+        sam_filename = genome_evidence.get_sam_filename()
+        genome_dict = genome_evidence.get_genome_evidence()
+        contig = genome_dict[contig_id].Contigrecord
+        fixed = genome_dict[contig_id].Contigfixedarray
+        insert = genome_dict[contig_id].Contiginsertarray
+
+        nucleotide = contig.seq[sequence_idx]
+        nucleotide_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset[nucleotide]]
+        a_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["A"]]
+        c_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["C"]]
+        g_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["G"]]
+        t_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["T"]]
+        delete_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["-"]]
+        insert_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["+"]]
         count_list = [a_count, c_count, g_count, t_count, delete_count, insert_count]
-        mutation_nucleotide = GenomeEvidence.nucleotide_list[count_list.index(max(count_list))]
         sum_count_list = float(sum(count_list))
         if sum_count_list > 0:
             proportion_mutant = 1.0 - (nucleotide_count / sum_count_list)
         else:
             proportion_mutant = 0.0
 
-        self.log.info("Region:%s, Ref.Idx.Mut:%s.%d.%s, Proportion:%f, 'A':%d, 'C': %d, 'G':, %d, 'T': %d, '-':%d, '+':%d"
-                     , contig.id, nucleotide, snp_index, mutation_nucleotide, proportion_mutant
-                     , a_count, c_count, g_count, t_count, delete_count, insert_count)
+        if proportion_mutant >= mutation_proportion:
+            mutation_nucleotide = GenomeEvidence.nucleotide_list[count_list.index(max(count_list))]
+        else:
+            mutation_nucleotide = nucleotide
+
+        location_string = "{}, {}, {}, {}|{}|{}, {}, {}, {}, {}, {}, {}".format( sam_filename
+                                                                                , contig.id, location_type
+                                                                                , nucleotide, sequence_idx
+                                                                                , mutation_nucleotide
+                                                                                , a_count, c_count, g_count, t_count
+                                                                                , delete_count, insert_count)
 
         if max(count_list) == insert_count:
             lookback = 100
-            for idx in range(snp_index-lookback, snp_index+1):
+            for idx in range(sequence_idx-lookback, sequence_idx+1):
                 if insert[idx] is not None:
                     for sequence, count in insert[idx].items():
                         self.log.info("+Sequence:%s, inserted:%d times, at contig location:%d", sequence, count, idx)
+
+        return location_string
 
     def old_stuff(self, snp_index, gene, mutant_seq, contig):
 

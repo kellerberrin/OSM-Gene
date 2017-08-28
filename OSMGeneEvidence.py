@@ -25,7 +25,6 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 from collections import namedtuple
-import copy
 
 from OSM_Filter import SNPAnalysis
 
@@ -43,10 +42,11 @@ class GenomeEvidence(object):
     nucleotide_list = [ "A", "C", "G", "T", "-", "+"]
     EvidenceFields = namedtuple("EvidenceFields", "Contigrecord Contigfixedarray Contiginsertarray")
 
-    def __init__(self, log, sam_evidence):
+    def __init__(self, log, sam_evidence, sam_filename):
 
         self.log = log
         self.genome_evidence = self.__create_genome_evidence(sam_evidence)
+        self.sam_filename = sam_filename
 
 
     ##############################################################################################
@@ -57,7 +57,16 @@ class GenomeEvidence(object):
 
     def get_all_snp(self, min_read_count, min_mutant_proportion):
         snp_evidence = self.__generate_all_snp(min_read_count, min_mutant_proportion)
-        return SNPAnalysis(self.log, self.genome_evidence, snp_evidence)
+        return SNPAnalysis(self.log, self, snp_evidence, min_read_count, min_mutant_proportion)
+
+    def get_genome_evidence(self):
+        return self.genome_evidence
+
+    def get_sam_filename(self):
+        return self.sam_filename
+
+    def set_sam_filename(self, filename):
+        self.sam_filename = filename
 
     ##############################################################################################
     #
@@ -106,10 +115,9 @@ class GenomeEvidence(object):
 
         evidence = {}
         for contig_id, contig_evidence in sam_evidence.items():
-            # The fixed array in sam_evidence is a c_type RawArray so we will do a deepcopy
-            contig_fixed_array = copy.deepcopy(contig_evidence.Contigfixedarray)
+            # Convert explicitly to catch any problems.
             evidence[contig_id] = GenomeEvidence.EvidenceFields( Contigrecord=contig_evidence.Contigrecord
-                                                                , Contigfixedarray=contig_fixed_array
+                                                                , Contigfixedarray=contig_evidence.Contigfixedarray
                                                                 , Contiginsertarray=contig_evidence.Contiginsertarray)
         return evidence
 
