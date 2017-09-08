@@ -155,14 +155,14 @@ class ExecEnv(object):
         ExecEnv.args.logFilename = os.path.join(ExecEnv.args.workDirectory,ExecEnv.args.logFilename)
 
         if ExecEnv.args.newLogFilename != "nonewlog" and ExecEnv.args.newLogFilename is not None:
-            ExecEnv.args.newLogFilename = os.path.join(ExecEnv.args.workDirectory,ExecEnv.args.newLogFilename)
+            ExecEnv.args.logFilename = os.path.join(ExecEnv.args.workDirectory,ExecEnv.args.newLogFilename)
             log_append = False
-            self.setup_file_logging(ExecEnv.args.newLogFilename, log_append, file_log_format)
+            self.setup_file_logging(ExecEnv.args.logFilename, log_append, file_log_format)
 
         elif ExecEnv.args.newLogFilename != "nonewlog":  # No filename supplied (optional arg).
-            ExecEnv.args.newLogFilename = os.path.join(ExecEnv.args.workDirectory,"OSM_GENE.log")
+            ExecEnv.args.logFilename = os.path.join(ExecEnv.args.workDirectory,"OSM_GENE.log")
             log_append = False
-            self.setup_file_logging(ExecEnv.args.newLogFilename, log_append, file_log_format)
+            self.setup_file_logging(ExecEnv.args.logFilename, log_append, file_log_format)
 
         else:
             log_append = True

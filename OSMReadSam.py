@@ -79,9 +79,9 @@ class ReadSamFile(SamFileEvidence):
     CigarItem = namedtuple("CigarItem", "Code Count")
     InsertTuple = namedtuple("InsertTuple", "Contigid Sequenceidx Insertseq")
 
-    def __init__(self, log, genome_gff, io_queue_size=1000000, lock_granularity=1000, processes=1, sam_filename=""):
+    def __init__(self, args, log, genome_gff, io_queue_size=1000000, lock_granularity=1000, processes=1, sam_filename=""):
 
-        super(ReadSamFile, self).__init__(log, sam_filename)
+        super(ReadSamFile, self).__init__(args, log, sam_filename)
 
         self.lock_granularity = lock_granularity
         self.io_queue_size = io_queue_size
@@ -372,7 +372,7 @@ class ReadSamFile(SamFileEvidence):
         for contig_id, contig_evidence in self.mp_genome_evidence.items():
             # The fixed array in mp_sam_evidence is a c_type RawArray so we will do a deepcopy to release it to heap
             contigfixedarray = copy.deepcopy(contig_evidence.Contigfixedarray)
-            evidence[contig_id] = ProcessSamFile.EvidenceFields(Contigrecord=contig_evidence.Contigrecord
+            evidence[contig_id] = SamFileEvidence.EvidenceFields(Contigrecord=contig_evidence.Contigrecord
                                                                 , Contigfixedarray=contigfixedarray
                                                                 , Contiginsertarray=contig_evidence.Contiginsertarray)
         return evidence

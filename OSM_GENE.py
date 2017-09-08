@@ -31,6 +31,7 @@ from OSMExecEnv import ExecEnv, __version__
 
 from OSMGFFParser import ParseGFFSeq
 from OSMReadSam import ReadSamFile
+from OSMSamEvidence import SamFileCPPLibrary
 from OSMGeneAnalysis import GeneAnalysis
 
 
@@ -51,7 +52,7 @@ class OSMGenomeComparison(object):
 
         parsed_gff = ParseGFFSeq(self.log, self.args.fastaFile, self.args.gffFile).get_parsed_structure()
 
-        mutant_evidence = self.__read_sam(parsed_gff, self.args.mutantFile)
+        mutant_evidence = self.__cpp_read_sam(parsed_gff, self.args.mutantFile)
 
         mutant_evidence.set_sam_filename("Mutant")
 
@@ -63,7 +64,7 @@ class OSMGenomeComparison(object):
 
         if self.args.parentFile != "noParent":
 
-            parent_evidence = self.__read_sam(parsed_gff, self.args.parentFile)
+            parent_evidence = self.__cpp_read_sam(parsed_gff, self.args.parentFile)
 
             parent_evidence.set_sam_filename("Parent")
 
@@ -79,7 +80,8 @@ class OSMGenomeComparison(object):
 
     def __read_sam(self, parsed_gff, sam_filename):
 
-        sam_file_reader = ReadSamFile( self.log
+        sam_file_reader = ReadSamFile( self.args
+                                     , self.log
                                      , parsed_gff
                                      , self.args.queueSize
                                      , self.args.lockGranularity
@@ -87,6 +89,20 @@ class OSMGenomeComparison(object):
                                      , sam_filename)
 
         return sam_file_reader.get_evidence_object()
+
+    def __cpp_read_sam(self, parsed_gff, sam_filename):
+
+        sam_file_reader = SamFileCPPLibrary( self.args
+                                            , self.log
+                                            , parsed_gff
+                                            , self.args.queueSize
+                                            , self.args.lockGranularity
+                                            , self.args.processCount
+                                            , sam_filename)
+
+        return sam_file_reader.get_evidence_object()
+
+
 
 
 # ===================================================================================================
