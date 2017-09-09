@@ -74,8 +74,20 @@ class SamFileCPPLibrary(SamFileEvidence):
         super(SamFileCPPLibrary, self).__init__(args, log, sam_filename)
 
         self.genome_evidence = self.__mp_genome_evidence(genome_gff)
+        self.contig_names, self.contig_sizes = self.__mp_contig_names(genome_gff)
 
         self.read_sam_file_cpp()
+
+    def __mp_contig_names(self, genome_gff):
+
+        contig_names = []
+        contig_sizes = []
+
+        for contig_seqrecord in genome_gff:
+            contig_names.append(contig_seqrecord.id)
+            contig_sizes.append(len(contig_seqrecord.seq))
+
+        return contig_names, contig_sizes
 
     def __mp_genome_evidence(self, genome_gff):
 
@@ -105,6 +117,8 @@ class SamFileCPPLibrary(SamFileEvidence):
     def read_sam_file_cpp(self):
 
         libread_sam.print_dict(self.genome_evidence)
+        libread_sam.contig_args(self.contig_names, self.contig_sizes)
+#        libread_sam.contig_args([1,2,3])
 
         cpp_read_lib = libread_sam.ProcessSamFile(self.args.logFilename)  # create the C++ processing class
-        cpp_read_lib.readSamFile(self.sam_filename)  # process the SAM files using multiple C++ threads
+        cpp_read_lib.readSamFile(self.sam_filename)  # process SAM files using C++ threads
