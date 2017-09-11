@@ -74,6 +74,7 @@ class SamFileCPPLibrary(SamFileEvidence):
         super(SamFileCPPLibrary, self).__init__(args, log, sam_filename)
 
         self.genome_evidence = self.__mp_genome_evidence(genome_gff)
+
         self.contig_names, self.contig_sizes = self.__mp_contig_names(genome_gff)
 
         self.read_sam_file_cpp()
@@ -110,15 +111,45 @@ class SamFileCPPLibrary(SamFileEvidence):
 
         self.log.info("Contig Feature id: %s, sequence length: %d", contig_seqrecord.id, seq_length)
 
+        self.fixed = evidence_fixed_array
+
         return SamFileEvidence.EvidenceFields(Contigrecord=contig_seqrecord
                                              , Contigfixedarray=evidence_fixed_array
                                              , Contiginsertarray=evidence_insert_array)
 
     def read_sam_file_cpp(self):
 
-        libread_sam.print_dict(self.genome_evidence)
-        libread_sam.contig_args(self.contig_names, self.contig_sizes)
-#        libread_sam.contig_args([1,2,3])
+        nucleotides = len(GenomeEvidence.nucleotide_list)
+        numpy = libread_sam.contig_args(self.contig_names, self.contig_sizes, nucleotides)
+        print(numpy[1, 1, 1])
+        print(numpy[0, 0, 100])
+        print(numpy[99, 999, 999])
+        print(numpy[0, 0, 0])
+        print("shape:", numpy.shape, " type:", numpy.dtype)
+
+        value = 3
+        self.fixed[1000000][4] = 50
+        libread_sam.numpy_args(self.fixed, value, self.contig_names[0])
+        print("numpy_args value:", self.fixed[3][3], " shape:", self.fixed.shape)
+
+        for idx in range(2):
+            self.leak_test(idx)
 
         cpp_read_lib = libread_sam.ProcessSamFile(self.args.logFilename)  # create the C++ processing class
+
+        for contig_id, read_data in self.genome_evidence.items():
+            cpp_read_lib.registerContigNumpy(contig_id, read_data.Contigfixedarray)
+
         cpp_read_lib.readSamFile(self.sam_filename)  # process SAM files using C++ threads
+
+        queue_contigs = cpp_read_lib.getQueueContigs()
+        queue_offsets = cpp_read_lib.getQueueOffsets()
+        queue_sequences = cpp_read_lib.getQueueSequences()
+
+    def leak_test(self, idx):
+
+        no_leak_lib = libread_sam.NoLeak()  # test for memory leaks
+        str_vec = no_leak_lib.getVec()  # return an big string
+        print(" string_vec[]:", str_vec[idx], " idx:", idx)
+
+
