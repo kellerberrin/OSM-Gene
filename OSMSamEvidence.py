@@ -111,31 +111,22 @@ class SamFileCPPLibrary(SamFileEvidence):
 
         self.log.info("Contig Feature id: %s, sequence length: %d", contig_seqrecord.id, seq_length)
 
-        self.fixed = evidence_fixed_array
-
         return SamFileEvidence.EvidenceFields(Contigrecord=contig_seqrecord
                                              , Contigfixedarray=evidence_fixed_array
                                              , Contiginsertarray=evidence_insert_array)
 
     def read_sam_file_cpp(self):
 
-        nucleotides = len(GenomeEvidence.nucleotide_list)
-        numpy = libread_sam.contig_args(self.contig_names, self.contig_sizes, nucleotides)
-        print(numpy[1, 1, 1])
-        print(numpy[0, 0, 100])
-        print(numpy[99, 999, 999])
-        print(numpy[0, 0, 0])
-        print("shape:", numpy.shape, " type:", numpy.dtype)
+#        nucleotides = len(GenomeEvidence.nucleotide_list)
+#        numpy = libread_sam.contig_args(self.contig_names, self.contig_sizes, nucleotides)
+#        print(numpy[1, 1, 1])
+#        print(numpy[0, 0, 100])
+#        print(numpy[99, 999, 999])
+#        print(numpy[0, 0, 0])
+#        print("shape:", numpy.shape, " type:", numpy.dtype)
 
-        value = 3
-        self.fixed[1000000][4] = 50
-        libread_sam.numpy_args(self.fixed, value, self.contig_names[0])
-        print("numpy_args value:", self.fixed[3][3], " shape:", self.fixed.shape)
-
-        for idx in range(2):
-            self.leak_test(idx)
-
-        cpp_read_lib = libread_sam.ProcessSamFile(self.args.logFilename)  # create the C++ processing class
+        # To avoid contention with Python 'log_file', file changed to 'log_file + cpp'
+        cpp_read_lib = libread_sam.ProcessSamFile(self.args.logFilename + "cpp")  # create the C++ processing class
 
         for contig_id, read_data in self.genome_evidence.items():
             cpp_read_lib.registerContigNumpy(contig_id, read_data.Contigfixedarray)
@@ -146,10 +137,21 @@ class SamFileCPPLibrary(SamFileEvidence):
         queue_offsets = cpp_read_lib.getQueueOffsets()
         queue_sequences = cpp_read_lib.getQueueSequences()
 
-    def leak_test(self, idx):
+        self.__process_insert_queue(queue_contigs, queue_offsets, queue_sequences)
 
-        no_leak_lib = libread_sam.NoLeak()  # test for memory leaks
-        str_vec = no_leak_lib.getVec()  # return an big string
-        print(" string_vec[]:", str_vec[idx], " idx:", idx)
+    def __process_insert_queue(self, queue_contigs, queue_offsets, queue_sequences):  # Unpack the insert queue
 
+        for idx in range(len(queue_contigs)):  # unpack the queue until the eof_flag is reached.
 
+            contig_evidence = self.genome_evidence[queue_contigs[idx]]  # The base class data structure.
+            evidence_insert_array = contig_evidence.Contiginsertarray
+
+            if evidence_insert_array[queue_offsets[idx]] is None:
+                insert_dict = {}
+                evidence_insert_array[queue_offsets[idx]] = insert_dict  # an indexed array of insertion dicts
+            if queue_sequences[idx] in evidence_insert_array[queue_offsets[idx]]:
+                evidence_insert_array[queue_offsets[idx]][queue_sequences[idx]] += 1
+            else:
+                evidence_insert_array[queue_offsets[idx]][queue_sequences[idx]] = 1
+
+        self.log.info("Processed: %d inserted nucloetide sequences", len(queue_contigs))

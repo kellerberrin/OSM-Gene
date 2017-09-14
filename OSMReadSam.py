@@ -257,7 +257,6 @@ class ReadSamFile(SamFileEvidence):
         cigar_list = self.__decode_cigar(sam_record.Cigar)  # returns a list of cigar tuples (Code, Count)
         current_position = int(sam_record.Pos) - 1     # Adjust for the 1 offset convention in sam files.
 
-
         if sam_record.Rname == "*":
             self.unmapped_read.value += 1
             return
