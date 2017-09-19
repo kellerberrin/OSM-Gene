@@ -147,7 +147,7 @@ class ReadSamFile(SamFileEvidence):
 
     def __mp_make_evidence_array(self, contig_seqrecord):
 
-        # for each numpy array element allocate storage for (in order} 'A', 'C', 'G', 'T' ('U'), '-', '+'
+        # for each numpy array element allocate storage for (in order} 'A', 'C', 'G', 'T' ('U'), 'N', '-', '+'
         nucleotides = len(GenomeEvidence.nucleotide_list)
         seq_length = len(contig_seqrecord.seq)
         numpy_shape = (seq_length, nucleotides)

@@ -38,8 +38,9 @@ from OSM_Filter import SNPAnalysis
 
 class GenomeEvidence(object):
 
-    nucleotide_offset = {"A": 0, "a" : 0, "C": 1, "c": 1, "G": 2, "g" : 2, "T": 3, "t": 3, "U": 3, "u" : 3, "-": 4, "+": 5}
-    nucleotide_list = [ "A", "C", "G", "T", "-", "+"]
+    nucleotide_offset = {"A": 0, "a" : 0, "C": 1, "c": 1, "G": 2, "g" : 2, "T": 3, "t": 3, "U": 3
+                        , "u" : 3 , "N" : 4, "n" : 4, "-": 5, "+": 6}
+    nucleotide_list = [ "A", "C", "G", "T", "N", "-", "+"]
     EvidenceFields = namedtuple("EvidenceFields", "Contigrecord Contigfixedarray Contiginsertarray")
 
     def __init__(self, log, sam_evidence, sam_filename):

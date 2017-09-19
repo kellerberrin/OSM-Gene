@@ -154,7 +154,7 @@ class GeneAnalysis(object):
 
     def print_nucleotide_heading(self):
 
-        return "Organism, Contig, Type, Ref|Location|Mut, A, C, G, T, -, +"
+        return "Organism, Contig, Type, Ref|Location|Mut, A, C, G, T, N, -, +"
 
     def print_nucleotide_evidence(self, genome_evidence, contig_id, location_type, sequence_idx, mutation_proportion):
 
@@ -170,6 +170,7 @@ class GeneAnalysis(object):
         c_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["C"]]
         g_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["G"]]
         t_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["T"]]
+        n_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["N"]]
         delete_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["-"]]
         insert_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["+"]]
         count_list = [a_count, c_count, g_count, t_count, delete_count, insert_count]
@@ -184,14 +185,14 @@ class GeneAnalysis(object):
         else:
             mutation_nucleotide = nucleotide
 
-        location_string = "{}, {}, {}, {}|{}|{}, {}, {}, {}, {}, {}, {}".format( sam_filename
+        location_string = "{}, {}, {}, {}|{}|{}, {}, {}, {}, {}, {}, {}, {}".format( sam_filename
                                                                                 , contig.id, location_type
                                                                                 , nucleotide, sequence_idx
                                                                                 , mutation_nucleotide
                                                                                 , a_count, c_count, g_count, t_count
-                                                                                , delete_count, insert_count)
+                                                                                , n_count, delete_count, insert_count)
 
-        if max(count_list) == insert_count:
+        if max(count_list) == insert_count or insert_count > 20:
             lookback = 100
             for idx in range(sequence_idx-lookback, sequence_idx+1):
                 if insert[idx] is not None:

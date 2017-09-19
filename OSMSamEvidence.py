@@ -101,7 +101,7 @@ class SamFileCPPLibrary(SamFileEvidence):
 
     def __make_evidence_array(self, contig_seqrecord):
 
-        # for each numpy array element allocate storage for (in order} 'A', 'C', 'G', 'T' ('U'), '-', '+'
+        # for each numpy array element allocate storage for (in order} 'A', 'C', 'G', 'T' ('U'), N, '-', '+'
         nucleotides = len(GenomeEvidence.nucleotide_list)
         seq_length = len(contig_seqrecord.seq)
         numpy_shape = (seq_length, nucleotides)
@@ -154,4 +154,4 @@ class SamFileCPPLibrary(SamFileEvidence):
             else:
                 evidence_insert_array[queue_offsets[idx]][queue_sequences[idx]] = 1
 
-        self.log.info("Processed: %d inserted nucloetide sequences", len(queue_contigs))
+        self.log.info("Processed: %d inserted nucleotide sequences", len(queue_contigs))
