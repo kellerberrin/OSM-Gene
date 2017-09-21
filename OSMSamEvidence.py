@@ -126,7 +126,7 @@ class SamFileCPPLibrary(SamFileEvidence):
 #        print("shape:", numpy.shape, " type:", numpy.dtype)
 
         # To avoid contention with Python 'log_file', file changed to 'log_file + cpp'
-        cpp_read_lib = libread_sam.ProcessSamFile(self.args.logFilename + "cpp")  # create the C++ processing class
+        cpp_read_lib = libread_sam.ProcessSamFile(self.args.logFilename + "cpp", self.args.readQuality)
 
         for contig_id, read_data in self.genome_evidence.items():
             cpp_read_lib.registerContigNumpy(contig_id, read_data.Contigfixedarray)

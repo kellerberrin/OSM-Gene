@@ -134,6 +134,11 @@ class ExecEnv(object):
                             help=("The maximum number of SAM records held in the inter-process record queue"))
 
         # Specific to the SAM file read object (ReadSamFile)
+        parser.add_argument("--quality", dest="readQuality", default=int(30),
+                            help=("The nucleotide read quality as -10 log10 Pr {ReadError} e.g. 30 is a 1/1000 chance "
+                                  "of an error. Defaults to 30."))
+
+        # Specific to the SAM file read object (ReadSamFile)
         parser.add_argument("--lockgranularity", dest="lockGranularity", default=int(1000),
                             help=("The number of nucleotide positions per inter-process write lock (less is faster)"))
 

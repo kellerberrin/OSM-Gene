@@ -173,7 +173,7 @@ class GeneAnalysis(object):
         n_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["N"]]
         delete_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["-"]]
         insert_count = fixed[sequence_idx][GenomeEvidence.nucleotide_offset["+"]]
-        count_list = [a_count, c_count, g_count, t_count, delete_count, insert_count]
+        count_list = [a_count, c_count, g_count, t_count, n_count, delete_count, insert_count]
         sum_count_list = float(sum(count_list))
         if sum_count_list > 0:
             proportion_mutant = 1.0 - (nucleotide_count / sum_count_list)
